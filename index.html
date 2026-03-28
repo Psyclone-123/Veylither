@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>The Arcane Forge — Games & Tools</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700;900&family=Cinzel:wght@400;600&family=Lora:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:        #08070d;
+      --bg2:       #0e0c18;
+      --bg3:       #13101f;
+      --gold:      #c9a84c;
+      --gold2:     #f0d080;
+      --ember:     #e05c20;
+      --teal:      #2ec4b6;
+      --text:      #e8e0d0;
+      --muted:     #8a7f6a;
+      --border:    rgba(201,168,76,0.18);
+      --glow:      rgba(201,168,76,0.12);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Lora', Georgia, serif;
+      overflow-x: hidden;
+    }
+
+    /* ── Stars background ── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image:
+        radial-gradient(1px 1px at 12% 8%,  rgba(255,255,220,.7) 0%, transparent 100%),
+        radial-gradient(1px 1px at 34% 22%, rgba(255,255,220,.5) 0%, transparent 100%),
+        radial-gradient(1px 1px at 55% 4%,  rgba(255,255,200,.8) 0%, transparent 100%),
+        radial-gradient(1px 1px at 73% 15%, rgba(255,255,220,.4) 0%, transparent 100%),
+        radial-gradient(1px 1px at 90% 6%,  rgba(255,255,220,.6) 0%, transparent 100%),
+        radial-gradient(1px 1px at 22% 40%, rgba(255,255,200,.3) 0%, transparent 100%),
+        radial-gradient(1px 1px at 66% 38%, rgba(255,255,220,.5) 0%, transparent 100%),
+        radial-gradient(1px 1px at 82% 50%, rgba(255,255,200,.4) 0%, transparent 100%),
+        radial-gradient(1px 1px at 45% 60%, rgba(255,255,220,.3) 0%, transparent 100%),
+        radial-gradient(1px 1px at 8%  75%, rgba(255,255,220,.6) 0%, transparent 100%),
+        radial-gradient(1px 1px at 95% 80%, rgba(255,255,200,.5) 0%, transparent 100%),
+        radial-gradient(1px 1px at 30% 88%, rgba(255,255,220,.4) 0%, transparent 100%),
+        radial-gradient(1px 1px at 60% 92%, rgba(255,255,200,.3) 0%, transparent 100%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── NAV ── */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0;
+      z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 1.2rem 4rem;
+      background: linear-gradient(to bottom, rgba(8,7,13,.95), transparent);
+      backdrop-filter: blur(2px);
+    }
+
+    .nav-logo {
+      font-family: 'Cinzel Decorative', serif;
+      font-size: 1.1rem;
+      color: var(--gold);
+      letter-spacing: .08em;
+      text-decoration: none;
+    }
+
+    .nav-links {
+      display: flex; gap: 2.5rem; list-style: none;
+    }
+
+    .nav-links a {
+      font-family: 'Cinzel', serif;
+      font-size: .8rem;
+      letter-spacing: .15em;
+      text-transform: uppercase;
+      color: var(--muted);
+      text-decoration: none;
+      transition: color .3s;
+    }
+    .nav-links a:hover { color: var(--gold); }
+
+    /* ── HERO ── */
+    #hero {
+      position: relative;
+      min-height: 100vh;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      text-align: center;
+      padding: 8rem 2rem 4rem;
+      overflow: hidden;
+    }
+
+    /* Radial glow behind hero */
+    #hero::after {
+      content: '';
+      position: absolute;
+      top: 40%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 800px; height: 500px;
+      background: radial-gradient(ellipse at center, rgba(201,168,76,.08) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    /* Decorative rune circle */
+    .rune-ring {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -52%) rotate(0deg);
+      width: 560px; height: 560px;
+      border: 1px solid rgba(201,168,76,.1);
+      border-radius: 50%;
+      animation: slowSpin 60s linear infinite;
+    }
+    .rune-ring::before {
+      content: '✦  ᚠ  ✦  ᚢ  ✦  ᚦ  ✦  ᚨ  ✦  ᚱ  ✦  ᚲ  ✦  ᚷ  ✦  ᚹ  ✦';
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: .65rem;
+      letter-spacing: 2.4em;
+      color: rgba(201,168,76,.25);
+      white-space: nowrap;
+      overflow: hidden;
+    }
+    .rune-ring-2 {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -52%) rotate(0deg);
+      width: 440px; height: 440px;
+      border: 1px dashed rgba(46,196,182,.07);
+      border-radius: 50%;
+      animation: slowSpin 40s linear infinite reverse;
+    }
+
+    @keyframes slowSpin { to { transform: translate(-50%, -52%) rotate(360deg); } }
+
+    .hero-eyebrow {
+      font-family: 'Cinzel', serif;
+      font-size: .75rem;
+      letter-spacing: .35em;
+      text-transform: uppercase;
+      color: var(--teal);
+      margin-bottom: 1.5rem;
+      opacity: 0;
+      animation: fadeUp .9s .3s forwards;
+    }
+
+    .hero-title {
+      font-family: 'Cinzel Decorative', serif;
+      font-size: clamp(2.8rem, 7vw, 6.5rem);
+      font-weight: 900;
+      line-height: 1.05;
+      color: var(--gold);
+      text-shadow: 0 0 60px rgba(201,168,76,.3), 0 0 120px rgba(201,168,76,.1);
+      opacity: 0;
+      animation: fadeUp .9s .5s forwards;
+    }
+
+    .hero-title span {
+      display: block;
+      font-size: clamp(1.6rem, 3.5vw, 3rem);
+      color: var(--text);
+      font-weight: 400;
+      text-shadow: none;
+      margin-top: .4rem;
+    }
+
+    .hero-sub {
+      max-width: 580px;
+      font-size: 1.05rem;
+      font-style: italic;
+      color: var(--muted);
+      line-height: 1.8;
+      margin: 2rem auto 0;
+      opacity: 0;
+      animation: fadeUp .9s .7s forwards;
+    }
+
+    .hero-cta {
+      display: flex; gap: 1.2rem; flex-wrap: wrap;
+      justify-content: center;
+      margin-top: 3rem;
+      opacity: 0;
+      animation: fadeUp .9s .9s forwards;
+    }
+
+    .btn-primary {
+      font-family: 'Cinzel', serif;
+      font-size: .8rem;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+      color: var(--bg);
+      background: linear-gradient(135deg, var(--gold), var(--gold2));
+      border: none;
+      padding: .9rem 2.4rem;
+      cursor: pointer;
+      text-decoration: none;
+      position: relative;
+      clip-path: polygon(12px 0%, 100% 0%, calc(100% - 12px) 100%, 0% 100%);
+      transition: box-shadow .3s, transform .2s;
+    }
+    .btn-primary:hover {
+      box-shadow: 0 0 30px rgba(201,168,76,.5);
+      transform: translateY(-2px);
+    }
+
+    .btn-outline {
+      font-family: 'Cinzel', serif;
+      font-size: .8rem;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+      color: var(--gold);
+      background: transparent;
+      border: 1px solid var(--gold);
+      padding: .9rem 2.4rem;
+      cursor: pointer;
+      text-decoration: none;
+      clip-path: polygon(12px 0%, 100% 0%, calc(100% - 12px) 100%, 0% 100%);
+      transition: background .3s, color .3s, transform .2s;
+    }
+    .btn-outline:hover {
+      background: rgba(201,168,76,.08);
+      transform: translateY(-2px);
+    }
+
+    /* scroll arrow */
+    .scroll-hint {
+      position: absolute; bottom: 2.5rem; left: 50%;
+      transform: translateX(-50%);
+      display: flex; flex-direction: column; align-items: center; gap: .4rem;
+      color: var(--muted);
+      font-family: 'Cinzel', serif;
+      font-size: .65rem;
+      letter-spacing: .2em;
+      animation: bob 2s ease-in-out infinite;
+    }
+    .scroll-hint svg { opacity: .4; }
+    @keyframes bob { 0%,100%{transform:translateX(-50%) translateY(0)} 50%{transform:translateX(-50%) translateY(6px)} }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(22px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── DIVIDER ── */
+    .rune-divider {
+      display: flex; align-items: center; gap: 1.2rem;
+      padding: 0 4rem;
+      margin: 0 auto;
+      max-width: 900px;
+    }
+    .rune-divider::before, .rune-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: linear-gradient(to right, transparent, var(--gold), transparent);
+      opacity: .25;
+    }
+    .rune-divider span {
+      font-family: 'Cinzel Decorative', serif;
+      font-size: .7rem;
+      color: var(--gold);
+      opacity: .5;
+      white-space: nowrap;
+    }
+
+    /* ── FEATURES / OFFERINGS ── */
+    #offerings {
+      position: relative;
+      padding: 7rem 2rem;
+      z-index: 1;
+    }
+
+    .section-header {
+      text-align: center;
+      margin-bottom: 4rem;
+    }
+
+    .section-label {
+      font-family: 'Cinzel', serif;
+      font-size: .72rem;
+      letter-spacing: .3em;
+      text-transform: uppercase;
+      color: var(--teal);
+      margin-bottom: .8rem;
+    }
+
+    .section-title {
+      font-family: 'Cinzel Decorative', serif;
+      font-size: clamp(1.6rem, 4vw, 3rem);
+      color: var(--gold);
+      margin-bottom: 1rem;
+    }
+
+    .section-sub {
+      font-style: italic;
+      color: var(--muted);
+      max-width: 520px;
+      margin: 0 auto;
+      line-height: 1.8;
+    }
+
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 2rem;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .card {
+      position: relative;
+      background: linear-gradient(145deg, var(--bg2), var(--bg3));
+      border: 1px solid var(--border);
+      padding: 2.5rem 2rem;
+      overflow: hidden;
+      transition: border-color .4s, transform .3s;
+    }
+
+    /* corner accent */
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0;
+      width: 40px; height: 40px;
+      border-top: 2px solid var(--gold);
+      border-left: 2px solid var(--gold);
+      opacity: .4;
+      transition: opacity .3s;
+    }
+    .card::after {
+      content: '';
+      position: absolute;
+      bottom: 0; right: 0;
+      width: 40px; height: 40px;
+      border-bottom: 2px solid var(--gold);
+      border-right: 2px solid var(--gold);
+      opacity: .4;
+      transition: opacity .3s;
+    }
+    .card:hover {
+      border-color: rgba(201,168,76,.45);
+      transform: translateY(-4px);
+    }
+    .card:hover::before, .card:hover::after { opacity: .9; }
+
+    .card-icon {
+      font-size: 2.4rem;
+      margin-bottom: 1.2rem;
+      display: block;
+      filter: drop-shadow(0 0 8px rgba(201,168,76,.35));
+    }
+
+    .card-tag {
+      font-family: 'Cinzel', serif;
+      font-size: .65rem;
+      letter-spacing: .25em;
+      text-transform: uppercase;
+      color: var(--ember);
+      margin-bottom: .5rem;
+    }
+
+    .card-title {
+      font-family: 'Cinzel', serif;
+      font-size: 1.15rem;
+      color: var(--gold2);
+      margin-bottom: .8rem;
+    }
+
+    .card-desc {
+      font-size: .92rem;
+      color: var(--muted);
+      line-height: 1.75;
+    }
+
+    .card-link {
+      display: inline-block;
+      margin-top: 1.4rem;
+      font-family: 'Cinzel', serif;
+      font-size: .72rem;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+      color: var(--teal);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(46,196,182,.3);
+      padding-bottom: 2px;
+      transition: color .2s, border-color .2s;
+    }
+    .card-link:hover { color: var(--gold); border-color: var(--gold); }
+
+    /* ── BLOG TEASER ── */
+    #lore {
+      padding: 6rem 2rem;
+      position: relative;
+      z-index: 1;
+      background: linear-gradient(to bottom, transparent, rgba(46,196,182,.02), transparent);
+    }
+
+    .lore-posts {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1.8rem;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .lore-post {
+      border-left: 2px solid rgba(201,168,76,.2);
+      padding: 1.5rem 1.8rem;
+      background: rgba(14,12,24,.6);
+      transition: border-color .3s;
+      cursor: pointer;
+    }
+    .lore-post:hover { border-color: var(--gold); }
+
+    .lore-meta {
+      font-family: 'Cinzel', serif;
+      font-size: .65rem;
+      letter-spacing: .2em;
+      color: var(--teal);
+      margin-bottom: .6rem;
+    }
+
+    .lore-title {
+      font-family: 'Cinzel', serif;
+      font-size: 1rem;
+      color: var(--text);
+      margin-bottom: .6rem;
+      line-height: 1.4;
+    }
+
+    .lore-excerpt {
+      font-size: .87rem;
+      color: var(--muted);
+      font-style: italic;
+      line-height: 1.7;
+    }
+
+    /* ── CONTACT ── */
+    #contact {
+      padding: 7rem 2rem;
+      position: relative;
+      z-index: 1;
+    }
+
+    .contact-inner {
+      max-width: 680px;
+      margin: 0 auto;
+      background: linear-gradient(145deg, var(--bg2), var(--bg3));
+      border: 1px solid var(--border);
+      padding: 4rem 3rem;
+      position: relative;
+    }
+
+    .contact-inner::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(to right, transparent, var(--gold), transparent);
+      opacity: .4;
+    }
+
+    .form-field {
+      margin-bottom: 1.6rem;
+    }
+
+    .form-label {
+      display: block;
+      font-family: 'Cinzel', serif;
+      font-size: .7rem;
+      letter-spacing: .2em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: .5rem;
+    }
+
+    .form-input, .form-textarea {
+      width: 100%;
+      background: rgba(8,7,13,.7);
+      border: 1px solid rgba(201,168,76,.15);
+      color: var(--text);
+      font-family: 'Lora', serif;
+      font-size: .95rem;
+      padding: .85rem 1.1rem;
+      outline: none;
+      transition: border-color .3s;
+      resize: vertical;
+    }
+    .form-input:focus, .form-textarea:focus {
+      border-color: rgba(201,168,76,.5);
+    }
+    .form-textarea { min-height: 130px; }
+
+    .form-submit {
+      width: 100%;
+      font-family: 'Cinzel', serif;
+      font-size: .82rem;
+      letter-spacing: .2em;
+      text-transform: uppercase;
+      color: var(--bg);
+      background: linear-gradient(135deg, var(--gold), var(--gold2));
+      border: none;
+      padding: 1.1rem;
+      cursor: pointer;
+      margin-top: .4rem;
+      transition: box-shadow .3s, opacity .2s;
+    }
+    .form-submit:hover { box-shadow: 0 0 40px rgba(201,168,76,.4); }
+
+    /* ── FOOTER ── */
+    footer {
+      border-top: 1px solid rgba(201,168,76,.1);
+      padding: 2.5rem 4rem;
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 1rem;
+      position: relative; z-index: 1;
+    }
+
+    .footer-brand {
+      font-family: 'Cinzel Decorative', serif;
+      font-size: .85rem;
+      color: var(--gold);
+      opacity: .7;
+    }
+
+    .footer-note {
+      font-size: .8rem;
+      color: var(--muted);
+      font-style: italic;
+    }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 700px) {
+      nav { padding: 1rem 1.5rem; }
+      .nav-links { gap: 1.2rem; }
+      .contact-inner { padding: 2.5rem 1.5rem; }
+      footer { padding: 2rem 1.5rem; flex-direction: column; align-items: flex-start; }
+      .rune-ring, .rune-ring-2 { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAV -->
+  <nav>
+    <a class="nav-logo" href="#">⚔ The Arcane Forge</a>
+    <ul class="nav-links">
+      <li><a href="#offerings">Offerings</a></li>
+      <li><a href="#lore">Lore &amp; Blog</a></li>
+      <li><a href="#contact">Summon Me</a></li>
+    </ul>
+  </nav>
+
+  <!-- HERO -->
+  <section id="hero">
+    <div class="rune-ring"></div>
+    <div class="rune-ring-2"></div>
+
+    <p class="hero-eyebrow">Welcome, Wanderer</p>
+    <h1 class="hero-title">
+      The Arcane Forge
+      <span>Games, Tools &amp; Mythic Worlds</span>
+    </h1>
+    <p class="hero-sub">
+      Crafted from shadow and starlight — immersive games and hand-forged tools for those who believe magic is not lost, only waiting to be found.
+    </p>
+    <div class="hero-cta">
+      <a href="#offerings" class="btn-primary">Explore the Forge</a>
+      <a href="#contact" class="btn-outline">Send a Raven</a>
+    </div>
+
+    <div class="scroll-hint">
+      <span>Descend</span>
+      <svg width="16" height="22" viewBox="0 0 16 22" fill="none">
+        <path d="M8 1v16M1 12l7 8 7-8" stroke="#c9a84c" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+  </section>
+
+  <div class="rune-divider" style="padding:0 2rem;">
+    <span>✦ ᚠᚢᚦ ✦ ᚨᚱᚲ ✦ ᚷᚹᚺ ✦</span>
+  </div>
+
+  <!-- OFFERINGS -->
+  <section id="offerings">
+    <div class="section-header">
+      <p class="section-label">What the Forge Offers</p>
+      <h2 class="section-title">Relics &amp; Realms</h2>
+      <p class="section-sub">Each creation is forged with intention — from sprawling fantasy games to tools that sharpen your own craft.</p>
+    </div>
+
+    <div class="cards-grid">
+
+      <div class="card">
+        <span class="card-icon">🧙</span>
+        <p class="card-tag">Games</p>
+        <h3 class="card-title">Fantasy RPG Worlds</h3>
+        <p class="card-desc">Step through veils of ancient mist into fully realised fantasy realms. Turn-based, narrative-driven, and dripping with lore for fans of Tolkien and Rowling alike.</p>
+        <a href="#" class="card-link">Enter the Realm →</a>
+      </div>
+
+      <div class="card">
+        <span class="card-icon">🗺</span>
+        <p class="card-tag">Tools</p>
+        <h3 class="card-title">World &amp; Map Builder</h3>
+        <p class="card-desc">Forge your own kingdoms, name your mountains, and chart seas unsailed. A drag-and-drop world-building tool built for storytellers and dungeon masters.</p>
+        <a href="#" class="card-link">Start Charting →</a>
+      </div>
+
+      <div class="card">
+        <span class="card-icon">📜</span>
+        <p class="card-tag">Tools</p>
+        <h3 class="card-title">Lore &amp; Quest Writer</h3>
+        <p class="card-desc">AI-assisted but soul-infused — a writing companion that helps you craft compelling quests, histories, and myths for your own universe.</p>
+        <a href="#" class="card-link">Write Your Legend →</a>
+      </div>
+
+      <div class="card">
+        <span class="card-icon">⚗️</span>
+        <p class="card-tag">Coming Soon</p>
+        <h3 class="card-title">The Alchemist's Toolkit</h3>
+        <p class="card-desc">A bundle of small, powerful utilities for game developers — procedural name generators, encounter tables, spell system templates, and more.</p>
+        <a href="#contact" class="card-link">Join the Waitlist →</a>
+      </div>
+
+    </div>
+  </section>
+
+  <div class="rune-divider" style="padding:0 2rem; margin-top: -1rem;">
+    <span>✦ ᛏᛁᚹᚨᛉ ✦</span>
+  </div>
+
+  <!-- LORE / BLOG -->
+  <section id="lore">
+    <div class="section-header">
+      <p class="section-label">From the Scriptorium</p>
+      <h2 class="section-title">Lore &amp; Chronicles</h2>
+      <p class="section-sub">Dispatches from the Forge — devlogs, world-building essays, and tales from the making.</p>
+    </div>
+
+    <div class="lore-posts">
+
+      <div class="lore-post">
+        <p class="lore-meta">Devlog · March 2026</p>
+        <h3 class="lore-title">Building the Magic System: Rules That Feel Alive</h3>
+        <p class="lore-excerpt">Magic should have weight — cost and consequence. Here's how I designed a spell framework that punishes recklessness and rewards mastery...</p>
+      </div>
+
+      <div class="lore-post">
+        <p class="lore-meta">World-Building · February 2026</p>
+        <h3 class="lore-title">How Languages Shape a Fantasy World</h3>
+        <p class="lore-excerpt">From Elvish to Khuzdul — the great fantasy creators knew that a tongue-of-its-own makes a world breathe. My approach to constructed language fragments...</p>
+      </div>
+
+      <div class="lore-post">
+        <p class="lore-meta">Essay · January 2026</p>
+        <h3 class="lore-title">Why Mythology Is the Best Game Design Document</h3>
+        <p class="lore-excerpt">Every great game world borrows from myth. The monomyth, the trickster, the underworld descent — ancient patterns that players recognise in their bones...</p>
+      </div>
+
+    </div>
+  </section>
+
+  <div class="rune-divider" style="padding:0 2rem;">
+    <span>✦ ᚾᛃᛇᛈ ✦</span>
+  </div>
+
+  <!-- CONTACT -->
+  <section id="contact">
+    <div class="section-header">
+      <p class="section-label">Open a Channel</p>
+      <h2 class="section-title">Send a Raven</h2>
+      <p class="section-sub">Whether you wish to collaborate, license a tool, or simply share a tale — the Forge welcomes all who seek.</p>
+    </div>
+
+    <div class="contact-inner">
+      <div class="form-field">
+        <label class="form-label" for="name">Your Name</label>
+        <input class="form-input" type="text" id="name" placeholder="How shall I address thee?" />
+      </div>
+      <div class="form-field">
+        <label class="form-label" for="email">Scroll Address (Email)</label>
+        <input class="form-input" type="email" id="email" placeholder="your@email.com" />
+      </div>
+      <div class="form-field">
+        <label class="form-label" for="subject">Subject of Your Quest</label>
+        <input class="form-input" type="text" id="subject" placeholder="Collaboration, inquiry, or tale to tell…" />
+      </div>
+      <div class="form-field">
+        <label class="form-label" for="msg">Your Message</label>
+        <textarea class="form-textarea" id="msg" placeholder="Speak your mind freely — no dark spells here."></textarea>
+      </div>
+      <button class="form-submit">Dispatch the Raven ✦</button>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer>
+    <span class="footer-brand">⚔ The Arcane Forge</span>
+    <span class="footer-note">Forged in shadow &amp; starlight · All rights reserved · © 2026</span>
+  </footer>
+
+</body>
+</html>
