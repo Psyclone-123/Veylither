@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Vey's Writer's blocks — A Competitive Word Game</title>
+  <meta name="description" content="Vey's Writer's blocks — a fun, competitive word game in the making."/>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&family=Patrick+Hand&family=Special+Elite&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --ink:      #2b2620;
+      --ink-soft: #4a4338;
+      --paper:    #f6efe1;
+      --card:     rgba(247, 241, 229, 0.86);
+      --card-line:rgba(43, 38, 32, 0.18);
+      --pencil:   #c0392b;   /* red pencil */
+      --pen:      #2c5d8f;    /* blue ballpoint */
+      --shadow:   rgba(30, 24, 16, 0.28);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      color: var(--ink);
+      font-family: 'Patrick Hand', 'Comic Sans MS', cursive;
+      font-size: 18px;
+      line-height: 1.7;
+      min-height: 100vh;
+      background: #ded3bf;
+      overflow-x: hidden;
+    }
+
+    /* ── ROTATING PAPER BACKGROUND ── */
+    .bg-slideshow {
+      position: fixed; inset: 0; z-index: -2;
+    }
+    .bg-slide {
+      position: absolute; inset: 0;
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      opacity: 0;
+      animation: bgcycle 45s infinite;
+      will-change: opacity;
+    }
+    /* 5 slides, each delayed 9s (45 / 5) */
+    .bg-slide:nth-child(1) { background-image: url("Assets/IMG_0665.webp"); animation-delay:  0s; }
+    .bg-slide:nth-child(2) { background-image: url("Assets/IMG_0667.webp"); animation-delay:  9s; }
+    .bg-slide:nth-child(3) { background-image: url("Assets/IMG_0668.webp"); animation-delay: 18s; }
+    .bg-slide:nth-child(4) { background-image: url("Assets/IMG_0669.webp"); animation-delay: 27s; }
+    .bg-slide:nth-child(5) { background-image: url("Assets/IMG_0670.webp"); animation-delay: 36s; }
+
+    @keyframes bgcycle {
+      0%   { opacity: 0; }
+      4%   { opacity: 1; }   /* fade in (~1.8s) */
+      20%  { opacity: 1; }   /* hold */
+      24%  { opacity: 0; }   /* fade out */
+      100% { opacity: 0; }
+    }
+
+    /* warm wash + vignette so ink text stays readable over photos */
+    .bg-wash {
+      position: fixed; inset: 0; z-index: -1; pointer-events: none;
+      background:
+        radial-gradient(120% 90% at 50% 30%, rgba(246,239,225,0.30), rgba(246,239,225,0.62) 70%, rgba(225,214,193,0.78)),
+        linear-gradient(rgba(248,242,228,0.18), rgba(248,242,228,0.18));
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .bg-slide { animation: none; opacity: 1; }
+      .bg-slide:nth-child(n+2) { opacity: 0; }
+    }
+
+    /* ── NAV ── */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.7rem 5vw;
+      background: rgba(246, 239, 225, 0.82);
+      backdrop-filter: blur(3px);
+      border-bottom: 2px dashed var(--card-line);
+    }
+    .logo {
+      font-family: 'Caveat', cursive;
+      font-weight: 700;
+      font-size: 2.1rem;
+      color: var(--ink);
+      text-decoration: none;
+      line-height: 1;
+      position: relative;
+      display: inline-block;
+      transform: rotate(-2.5deg);
+      padding: 0 .15em .12em;
+      letter-spacing: .01em;
+      text-shadow: 1px 1px 0 rgba(246,239,225,.6);
+    }
+    /* hand-drawn squiggle underline */
+    .logo .underline {
+      position: absolute; left: -2%; bottom: -4px; width: 104%; height: 12px;
+      overflow: visible; pointer-events: none;
+    }
+    .logo .underline path {
+      fill: none; stroke: var(--pencil); stroke-width: 2.4;
+      stroke-linecap: round; stroke-linejoin: round;
+    }
+    .logo:hover { color: var(--pencil); }
+    .logo .apos { color: var(--pencil); }
+    .nav-links { display: flex; gap: 1.8rem; list-style: none; }
+    .nav-links a {
+      font-family: 'Patrick Hand', cursive;
+      font-size: 1.05rem;
+      color: var(--ink-soft);
+      text-decoration: none;
+      letter-spacing: .02em;
+      border-bottom: 2px solid transparent;
+      transition: border-color .2s, color .2s;
+    }
+    .nav-links a:hover { color: var(--pencil); border-color: var(--pencil); }
+
+    /* ── SHARED ── */
+    .wrap { max-width: 940px; margin: 0 auto; padding: 0 6vw; }
+    section { position: relative; z-index: 1; }
+
+    .paper-card {
+      background: var(--card);
+      border: 1px solid var(--card-line);
+      border-radius: 4px;
+      box-shadow: 0 10px 30px var(--shadow);
+      padding: 2.2rem 2.4rem;
+      position: relative;
+    }
+    /* little taped corner */
+    .paper-card::before {
+      content: '';
+      position: absolute; top: -10px; left: 50%; transform: translateX(-50%) rotate(-2deg);
+      width: 90px; height: 22px;
+      background: rgba(200, 190, 165, 0.55);
+      box-shadow: 0 1px 2px rgba(0,0,0,.12);
+    }
+
+    h1, h2, h3 { font-family: 'Caveat', cursive; line-height: 1.05; font-weight: 700; }
+
+    /* ── HERO ── */
+    #hero {
+      min-height: 100vh;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      text-align: center;
+      padding: 7rem 6vw 4rem;
+    }
+    .hero-eye {
+      font-family: 'Special Elite', monospace;
+      font-size: .8rem; letter-spacing: .35em; text-transform: uppercase;
+      color: var(--ink-soft); margin-bottom: 1.2rem;
+    }
+    #hero h1 {
+      font-size: clamp(3.4rem, 11vw, 7.5rem);
+      color: var(--ink);
+      text-shadow: 2px 3px 0 rgba(246,239,225,.7);
+    }
+    #hero h1 .apos { color: var(--pencil); }
+    .hero-tagline {
+      font-size: 1.35rem; max-width: 30ch; margin: 1rem auto 0; color: var(--ink-soft);
+    }
+    .hero-actions { margin-top: 2.4rem; display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; }
+
+    .btn {
+      font-family: 'Patrick Hand', cursive;
+      font-size: 1.1rem;
+      padding: .65rem 1.6rem;
+      text-decoration: none;
+      color: var(--paper);
+      background: var(--ink);
+      border: 2px solid var(--ink);
+      border-radius: 2px;
+      box-shadow: 3px 3px 0 var(--ink-soft);
+      transition: transform .12s, box-shadow .12s;
+    }
+    .btn:hover { transform: translate(1px,1px); box-shadow: 2px 2px 0 var(--ink-soft); }
+    .btn.alt { background: transparent; color: var(--ink); box-shadow: 3px 3px 0 rgba(43,38,32,.25); }
+    .btn.alt:hover { background: rgba(43,38,32,.06); }
+
+    /* scribbled underline accent */
+    .scribble {
+      display: inline-block;
+      background-image: linear-gradient(var(--pencil), var(--pencil));
+      background-size: 100% 3px;
+      background-repeat: no-repeat;
+      background-position: 0 92%;
+      padding-bottom: 2px;
+    }
+
+    /* ── SECTION TITLES ── */
+    .sec-pad { padding: 5rem 0; }
+    .sec-title {
+      font-size: clamp(2.4rem, 6vw, 3.6rem);
+      color: var(--ink);
+      margin-bottom: .3rem;
+      text-align: center;
+    }
+    .sec-sub {
+      text-align: center; color: var(--ink-soft);
+      font-family: 'Special Elite', monospace; font-size: .85rem; letter-spacing: .12em;
+      margin-bottom: 2.4rem;
+    }
+
+    /* ── ABOUT / FEATURES ── */
+    .about-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(240px,1fr));
+      gap: 1.6rem; margin-top: 1.4rem;
+    }
+    .feature h3 { font-size: 1.9rem; color: var(--pen); margin-bottom: .2rem; }
+    .feature p { color: var(--ink-soft); }
+    .feature .num {
+      font-family: 'Special Elite', monospace; font-size: .8rem; color: var(--pencil);
+      letter-spacing: .2em;
+    }
+
+    /* ── DEVLOG ── */
+    .devlog { display: flex; flex-direction: column; gap: 1.6rem; }
+    .log-entry { transform: rotate(-.4deg); }
+    .log-entry:nth-child(even) { transform: rotate(.5deg); }
+    .log-meta {
+      font-family: 'Special Elite', monospace; font-size: .72rem;
+      letter-spacing: .12em; color: var(--pencil); text-transform: uppercase;
+      margin-bottom: .3rem;
+    }
+    .log-entry h3 { font-size: 1.9rem; margin-bottom: .4rem; }
+    .log-entry p { color: var(--ink-soft); }
+    .log-tag {
+      display: inline-block; margin-top: .8rem;
+      font-family: 'Special Elite', monospace; font-size: .65rem;
+      padding: .15rem .6rem; border: 1px solid var(--card-line); border-radius: 20px;
+      color: var(--ink-soft);
+    }
+
+    /* ── CONTACT / FOLLOW ── */
+    .follow { text-align: center; }
+    .follow p { max-width: 46ch; margin: 0 auto 1.6rem; color: var(--ink-soft); }
+
+    /* ── FOOTER ── */
+    footer {
+      position: relative; z-index: 1;
+      text-align: center; padding: 3rem 6vw 2.4rem;
+      border-top: 2px dashed var(--card-line);
+      background: rgba(246, 239, 225, 0.7);
+      margin-top: 4rem;
+    }
+    .foot-brand { font-family: 'Caveat', cursive; font-weight: 700; font-size: 1.6rem; }
+    .foot-brand .apos { color: var(--pencil); }
+    footer small { display: block; margin-top: .4rem; color: var(--ink-soft); font-family: 'Special Elite', monospace; font-size: .7rem; letter-spacing: .1em; }
+
+    @media (max-width: 640px) {
+      .nav-links { display: none; }
+      .paper-card { padding: 1.8rem 1.4rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- rotating paper background -->
+  <div class="bg-slideshow" aria-hidden="true">
+    <div class="bg-slide"></div>
+    <div class="bg-slide"></div>
+    <div class="bg-slide"></div>
+    <div class="bg-slide"></div>
+    <div class="bg-slide"></div>
+  </div>
+  <div class="bg-wash" aria-hidden="true"></div>
+
+  <nav>
+    <a class="logo" href="#hero">Veylither<svg class="underline" viewBox="0 0 200 12" preserveAspectRatio="none" aria-hidden="true"><path d="M2 7 Q 20 2 40 6 T 80 6 Q 100 9 120 5 T 160 6 Q 180 3 198 6"/></svg></a>
+    <ul class="nav-links">
+      <li><a href="#about">The Game</a></li>
+      <li><a href="#mission">Mission</a></li>
+    </ul>
+  </nav>
+
+  <!-- HERO -->
+  <section id="hero">
+    <h1>Vey<span class="apos">'</span>s Writer<span class="apos">'</span>s blocks</h1>
+  </section>
+
+  <!-- ABOUT -->
+  <section id="about" class="sec-pad">
+    <div class="wrap">
+      <h2 class="sec-title">The <span class="scribble">Game</span></h2>
+      <p class="sec-sub">A WORK IN PROGRESS</p>
+      <div class="paper-card">
+        <p>Writer's block is my baby. It's a project that aims to make a fun, competitive word game that takes the fun from Scrabble and takes the pressure from other puzzle games to make an enjoyable experience for all!</p>
+        <p style="margin-top:1.1rem;">I've always enjoyed playing word games with friends or family, but I've never liked how easy it was to cheat — whether that's researching words that can be used to win, or full-on overlays that can tell you the optimal word for the match at hand.</p>
+        <p style="margin-top:1.1rem;">It's not done yet, and likely won't be done for a while, but when it is I'd love you guys to check it out on Google Play or the Apple Store.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- MISSION -->
+  <section id="mission" class="sec-pad">
+    <div class="wrap">
+      <h2 class="sec-title">The <span class="scribble">Mission</span></h2>
+      <p class="sec-sub">WHAT THIS GAME IS FOR</p>
+      <div class="paper-card">
+        <p>I want my game to be a safe space for players of all age groups to play together, and enjoy a good time. I want this game to be something that you could hand the oldest person in your family and have a game night!</p>
+        <p style="margin-top:1.1rem;">Writer's block will be mostly free for everyone, preferably without ads — but I can't confirm it.</p>
+        <p style="margin-top:1.1rem;">One last thing: I'm going to add so much content, achievements, and game modes that it'll have you entertained for hours on end!</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span class="foot-brand">Vey<span class="apos">'</span>s Writer<span class="apos">'</span>s blocks</span>
+    <small>© 2026 · A COMPETITIVE WORD GAME</small>
+  </footer>
+
+</body>
+</html>
