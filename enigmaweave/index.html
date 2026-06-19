@@ -1,0 +1,2368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>EnigmaWeave - Grid Inverter</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at top center, #2b114d 0%, #0b0813 100%);
+            overflow: hidden;
+            font-family: 'Courier New', Courier, monospace;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+            overscroll-behavior: none;
+        }
+
+        #fluid-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+            image-rendering: auto; 
+            opacity: 0.55;
+            mix-blend-mode: screen;
+        }
+
+        #game-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 2;
+            pointer-events: auto;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 3;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 10px 0 30px;
+            box-sizing: border-box;
+        }
+
+        .arcade-container {
+            text-align: center;
+            margin-top: 4px;
+            pointer-events: none;
+        }
+
+        .arcade-subtitle {
+            font-size: 0.7rem;
+            color: #8b9bb4;
+            letter-spacing: 3px;
+            margin-bottom: 2px;
+            text-transform: uppercase;
+        }
+
+        .arcade-header {
+            font-size: 2.2rem;
+            font-weight: 900;
+            letter-spacing: 4px;
+            margin: 0;
+            background: linear-gradient(90deg, #f271ff, #62cdff, #ffb07c);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0px 0px 20px rgba(242, 113, 255, 0.4);
+        }
+
+        #message {
+            position: absolute;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 1rem;
+            color: #00ffcc;
+            text-shadow: 0 0 10px #00ffcc;
+            min-height: 24px;
+            pointer-events: none;
+            text-align: center;
+            z-index: 5;
+        }
+
+        #pause-btn {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            width: 46px;
+            height: 46px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(20, 15, 40, 0.8);
+            color: #62cdff;
+            border: 1px solid #62cdff;
+            border-radius: 8px;
+            cursor: pointer;
+            z-index: 6;
+            font-size: 1.15rem;
+            font-family: inherit;
+            pointer-events: auto;
+            transition: all 0.15s;
+        }
+        #pause-btn:hover { background: #62cdff; color: #000; }
+
+        #pause-menu {
+            position: absolute;
+            inset: 0;
+            z-index: 9;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(8, 5, 18, 0.82);
+            -webkit-backdrop-filter: blur(2px);
+            backdrop-filter: blur(2px);
+            pointer-events: auto;
+        }
+        .pause-inner {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 14px;
+            width: 280px;
+            max-width: 80vw;
+        }
+        .pause-title {
+            font-size: 2.4rem;
+            font-weight: 900;
+            letter-spacing: 6px;
+            margin: 0 0 14px;
+            background: linear-gradient(90deg, #f271ff, #62cdff, #ffb07c);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 24px rgba(98, 205, 255, 0.4);
+        }
+        .pause-inner .home-btn { width: 100%; }
+
+        #game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(15, 10, 30, 0.95);
+            padding: 40px 60px;
+            border-radius: 15px;
+            text-align: center;
+            color: white;
+            z-index: 10;
+            box-shadow: 
+                0 0 20px rgba(242, 113, 255, 0.5),
+                0 0 40px rgba(242, 113, 255, 0.3),
+                0 0 60px rgba(98, 205, 255, 0.2);
+            border: 2px solid #62cdff;
+            display: none;
+            pointer-events: auto;
+        }
+
+        #game-over h2.neon-text {
+            font-size: 3.2rem;
+            font-weight: 900;
+            letter-spacing: 6px;
+            margin: 0 0 8px 0;
+            background: linear-gradient(90deg, #f271ff, #62cdff, #ffb07c);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 
+                0 0 5px #fff,
+                0 0 10px #fff,
+                0 0 20px #f271ff,
+                0 0 30px #f271ff,
+                0 0 40px #62cdff;
+            line-height: 1;
+        }
+
+        .game-over-subtitle {
+            font-size: 1rem;
+            color: #8b9bb4;
+            letter-spacing: 3px;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            text-shadow: 0 0 8px #62cdff;
+        }
+
+        #game-over p {
+            font-size: 1.2rem;
+            opacity: 0.8;
+            margin-bottom: 30px;
+        }
+
+        #final-score {
+            font-size: 1.6rem;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 0 0 10px #f271ff;
+        }
+
+        .play-again-btn {
+            background: #62cdff;
+            color: #000;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            font-family: inherit;
+            font-weight: 900;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: transform 0.1s;
+            text-transform: uppercase;
+        }
+
+        .play-again-btn:active {
+            transform: scale(0.95);
+        }
+
+        .menu-link-btn {
+            display: block;
+            margin: 14px auto 0;
+            background: transparent;
+            color: #8b9bb4;
+            border: 1px solid #4a4a6a;
+            padding: 10px 28px;
+            font-size: 0.85rem;
+            font-family: inherit;
+            font-weight: 700;
+            border-radius: 5px;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            transition: all 0.15s;
+        }
+        .menu-link-btn:hover { color: #fff; border-color: #62cdff; }
+
+        /* ===== HOME SCREEN ===== */
+        #home-screen, #skins-panel, #settings-panel {
+            position: absolute;
+            inset: 0;
+            z-index: 8;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            pointer-events: auto;
+            text-align: center;
+        }
+
+        .home-title-wrap { margin-bottom: 48px; }
+        .home-subtitle {
+            font-size: 0.85rem;
+            color: #8b9bb4;
+            letter-spacing: 5px;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+        }
+        .home-title {
+            font-size: 3.4rem;
+            font-weight: 900;
+            letter-spacing: 6px;
+            margin: 0;
+            background: linear-gradient(90deg, #f271ff, #62cdff, #ffb07c);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 30px rgba(242, 113, 255, 0.45);
+        }
+
+        .home-menu {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            width: 280px;
+        }
+        .home-btn {
+            background: rgba(15, 10, 30, 0.82);
+            color: #cfe6ff;
+            border: 1.5px solid #62cdff;
+            padding: 16px 20px;
+            font-size: 1.05rem;
+            font-family: inherit;
+            font-weight: 800;
+            border-radius: 8px;
+            cursor: pointer;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            transition: all 0.15s;
+            position: relative;
+        }
+        .home-btn:hover:not(.disabled) {
+            background: #62cdff;
+            color: #06121f;
+            box-shadow: 0 0 22px rgba(98, 205, 255, 0.6);
+            transform: translateY(-2px);
+        }
+        .home-btn.primary {
+            border-color: #00ffcc;
+            color: #00ffcc;
+        }
+        .home-btn.primary:hover {
+            background: #00ffcc;
+            color: #062018;
+            box-shadow: 0 0 24px rgba(0, 255, 204, 0.65);
+        }
+        .home-btn.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            border-color: #4a4a6a;
+            color: #7a7a9a;
+        }
+        .soon-tag {
+            display: block;
+            font-size: 0.55rem;
+            letter-spacing: 2px;
+            color: #ffb07c;
+            margin-top: 4px;
+        }
+
+        /* ===== PANELS ===== */
+        .panel-inner {
+            background: rgba(12, 8, 26, 0.92);
+            border: 2px solid #62cdff;
+            border-radius: 14px;
+            padding: 32px 36px;
+            max-width: 90vw;
+            box-shadow: 0 0 30px rgba(98, 205, 255, 0.25);
+        }
+        .panel-title {
+            font-size: 2rem;
+            font-weight: 900;
+            letter-spacing: 5px;
+            margin: 0 0 24px;
+            background: linear-gradient(90deg, #f271ff, #62cdff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .back-btn {
+            margin-top: 26px;
+            width: 100%;
+            border-color: #4a4a6a;
+            color: #8b9bb4;
+        }
+
+        /* ===== SKINS GRID ===== */
+        .skin-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 14px;
+        }
+        .skin-card {
+            background: rgba(20, 14, 40, 0.7);
+            border: 2px solid #2e2a4a;
+            border-radius: 10px;
+            padding: 14px;
+            cursor: pointer;
+            transition: all 0.15s;
+            min-width: 130px;
+        }
+        .skin-card:hover { transform: translateY(-2px); border-color: #62cdff; }
+        .skin-card.selected {
+            border-color: #00ffcc;
+            box-shadow: 0 0 18px rgba(0, 255, 204, 0.4);
+        }
+        .skin-swatch {
+            display: flex;
+            gap: 6px;
+            justify-content: center;
+            margin-bottom: 10px;
+        }
+        .skin-swatch .sw {
+            width: 22px;
+            height: 22px;
+            border-radius: 5px;
+            display: inline-block;
+        }
+        .skin-name {
+            font-size: 0.9rem;
+            font-weight: 800;
+            letter-spacing: 2px;
+        }
+        .skin-active {
+            font-size: 0.6rem;
+            color: #00ffcc;
+            letter-spacing: 2px;
+            margin-top: 4px;
+        }
+
+        /* ===== SETTINGS ===== */
+        .settings-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 30px;
+            padding: 14px 4px;
+            border-bottom: 1px solid #2a2545;
+            color: #cfe6ff;
+            font-size: 0.95rem;
+            min-width: 280px;
+        }
+        .settings-val { color: #8b9bb4; }
+        .toggle-btn {
+            background: transparent;
+            color: #62cdff;
+            border: 1px solid #62cdff;
+            padding: 6px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.8rem;
+            letter-spacing: 1px;
+        }
+        .toggle-btn:hover { background: #62cdff; color: #000; }
+
+        /* ===== MOBILE TUNING ===== */
+        @media (max-width: 720px), (orientation: portrait) {
+            .arcade-header { font-size: 1.5rem; letter-spacing: 2px; }
+            .arcade-subtitle { font-size: 0.6rem; letter-spacing: 2px; }
+            #ui-layer { padding-top: 6px; }
+            .home-title { font-size: 2.3rem; letter-spacing: 3px; }
+            .home-menu { width: 80vw; max-width: 320px; }
+            .home-btn { padding: 18px 18px; font-size: 1rem; }
+            .skin-grid { grid-template-columns: repeat(2, 1fr); }
+            #message { bottom: 64px; font-size: 0.9rem; }
+            #pause-btn { top: 12px; right: 12px; }
+            .panel-inner { padding: 24px 20px; }
+            .menu-link-btn, .play-again-btn { padding: 14px 28px; }
+        }
+
+        /* Bigger tap targets on coarse pointers */
+        @media (pointer: coarse) {
+            .home-btn, .play-again-btn, .menu-link-btn, .toggle-btn, #pause-btn, .skin-card {
+                min-height: 44px;
+            }
+        }
+
+        /* ===== LEADERBOARD ===== */
+        #leaderboard-panel {
+            position: absolute;
+            inset: 0;
+            z-index: 8;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            pointer-events: auto;
+            text-align: center;
+        }
+        .lb-list {
+            list-style: none;
+            margin: 0 0 4px;
+            padding: 0;
+            min-width: 300px;
+            max-width: 80vw;
+            max-height: 52vh;
+            overflow-y: auto;
+        }
+        .lb-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 11px 6px;
+            border-bottom: 1px solid #2a2545;
+            font-size: 1.05rem;
+            color: #cfe6ff;
+        }
+        .lb-rank {
+            width: 2.2ch;
+            text-align: right;
+            font-weight: 900;
+            color: #62cdff;
+            flex: none;
+        }
+        .lb-row:nth-child(1) .lb-rank { color: #ffd54a; text-shadow: 0 0 10px rgba(255,213,74,0.6); }
+        .lb-row:nth-child(2) .lb-rank { color: #d6e2f0; }
+        .lb-row:nth-child(3) .lb-rank { color: #ffb07c; }
+        .lb-name {
+            flex: 1;
+            text-align: left;
+            letter-spacing: 2px;
+            font-weight: 700;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .lb-score {
+            flex: none;
+            font-weight: 900;
+            color: #00ffcc;
+            text-shadow: 0 0 8px rgba(0,255,204,0.45);
+        }
+        .lb-empty {
+            list-style: none;
+            color: #8b9bb4;
+            padding: 26px 8px;
+            text-align: center;
+        }
+        .lb-input {
+            display: block;
+            margin: 8px auto;
+            width: 80%;
+            max-width: 240px;
+            padding: 12px;
+            background: rgba(20, 15, 40, 0.9);
+            border: 1.5px solid #62cdff;
+            border-radius: 6px;
+            color: #fff;
+            font-family: inherit;
+            font-size: 1.1rem;
+            text-align: center;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+        }
+        .lb-input:focus {
+            outline: none;
+            border-color: #00ffcc;
+            box-shadow: 0 0 14px rgba(0, 255, 204, 0.4);
+        }
+        .lb-newhigh {
+            color: #ffd54a;
+            font-weight: 900;
+            letter-spacing: 3px;
+            margin: 4px 0 2px;
+            text-shadow: 0 0 12px rgba(255, 213, 74, 0.6);
+            animation: lbpulse 1.1s ease-in-out infinite;
+        }
+        @keyframes lbpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+        .lb-saved {
+            color: #00ffcc;
+            font-weight: 800;
+            letter-spacing: 2px;
+            margin: 10px 0;
+            text-shadow: 0 0 10px rgba(0, 255, 204, 0.5);
+        }
+        #lb-entry { margin: 6px 0 14px; }
+        #game-over { max-height: 90vh; overflow-y: auto; }
+
+        /* ===== CREDITS / FOOTER ===== */
+        .home-footer {
+            position: absolute;
+            bottom: 16px;
+            left: 0;
+            right: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            pointer-events: none;
+        }
+        .credits-link {
+            pointer-events: auto;
+            background: transparent;
+            border: none;
+            color: #8b9bb4;
+            font-family: inherit;
+            font-size: 0.75rem;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            cursor: pointer;
+            padding: 6px 10px;
+            transition: color 0.15s, text-shadow 0.15s;
+        }
+        .credits-link:hover { color: #62cdff; text-shadow: 0 0 8px rgba(98, 205, 255, 0.6); }
+        .copyright {
+            color: #5a6480;
+            font-size: 0.7rem;
+            letter-spacing: 2px;
+        }
+        #credits-panel {
+            position: absolute;
+            inset: 0;
+            z-index: 8;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            pointer-events: auto;
+            text-align: center;
+        }
+        .credits-body {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            min-width: 280px;
+            max-width: 80vw;
+        }
+        .credit-row {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            padding: 10px 4px;
+            border-bottom: 1px solid #2a2545;
+        }
+        .credit-role {
+            color: #8b9bb4;
+            font-size: 0.7rem;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+        }
+        .credit-name { font-size: 1.1rem; font-weight: 800; letter-spacing: 1px; color: #cfe6ff; }
+        .credit-name a {
+            color: #62cdff;
+            text-decoration: none;
+            border-bottom: 1px dashed rgba(98, 205, 255, 0.5);
+        }
+        .credit-name a:hover { color: #00ffcc; border-bottom-color: #00ffcc; }
+        .credit-copyright {
+            margin-top: 18px;
+            color: #8b9bb4;
+            font-size: 0.8rem;
+            letter-spacing: 2px;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="fluid-canvas"></canvas>
+    <canvas id="game-canvas"></canvas>
+
+    <div id="ui-layer">
+        <div class="arcade-container">
+            <div class="arcade-subtitle">— INVERT THE GRID —</div>
+            <h1 class="arcade-header">ENIGMAWEAVE</h1>
+        </div>
+    </div>
+
+    <div id="message"></div>
+
+    <div id="game-over">
+        <h2 class="neon-text">GAME OVER</h2>
+        <div class="game-over-subtitle">NO MORE MOVES POSSIBLE</div>
+        <p>Final Score: <span id="final-score">0</span></p>
+        <div id="lb-entry" style="display:none;">
+            <div class="lb-newhigh">★ NEW HIGH SCORE ★</div>
+            <input id="lb-name" class="lb-input" maxlength="12" placeholder="ENTER NAME" autocomplete="off" onkeydown="if(event.key==='Enter')submitScore()" />
+            <button class="play-again-btn" onclick="submitScore()">SAVE</button>
+        </div>
+        <div id="lb-saved" class="lb-saved" style="display:none;"></div>
+        <button class="play-again-btn" onclick="restartGame()">PLAY AGAIN</button>
+        <button class="menu-link-btn" onclick="showHome()">MAIN MENU</button>
+        <button class="menu-link-btn" onclick="openLeaderboard()">VIEW LEADERBOARD</button>
+    </div>
+
+    <!-- HOME SCREEN -->
+    <div id="home-screen">
+        <div class="home-title-wrap">
+            <div class="home-subtitle">— INVERT THE GRID —</div>
+            <h1 class="home-title">ENIGMAWEAVE</h1>
+        </div>
+        <div class="home-menu">
+            <button class="home-btn primary" onclick="startPlay()">▶ PLAY</button>
+            <button class="home-btn" onclick="openSkins()">◆ SKINS</button>
+            <button class="home-btn" onclick="openSettings()">⚙ SETTINGS</button>
+            <button class="home-btn" onclick="openLeaderboard()">🏆 LEADERBOARD</button>
+            <button class="home-btn disabled" disabled>
+                ⚇ MULTIPLAYER <span class="soon-tag">COMING SOON</span>
+            </button>
+        </div>
+        <div class="home-footer">
+            <button class="credits-link" onclick="openCredits()">CREDITS</button>
+            <div class="copyright">&copy; 2026 EnigmaWeave</div>
+        </div>
+    </div>
+
+    <!-- SKINS PANEL -->
+    <div id="skins-panel">
+        <div class="panel-inner">
+            <h2 class="panel-title">SKINS</h2>
+            <div id="skin-grid" class="skin-grid"></div>
+            <button class="home-btn back-btn" onclick="showHome()">← BACK</button>
+        </div>
+    </div>
+
+    <!-- SETTINGS PANEL -->
+    <div id="settings-panel">
+        <div class="panel-inner">
+            <h2 class="panel-title">SETTINGS</h2>
+            <div class="settings-row">
+                <span>Background Music</span>
+                <button class="toggle-btn" onclick="toggleMusic()">TOGGLE</button>
+            </div>
+            <div class="settings-row">
+                <span>Haptics (Vibration)</span>
+                <button class="toggle-btn" id="haptics-toggle" onclick="toggleHaptics()">ON</button>
+            </div>
+            <div class="settings-row">
+                <span>Board Size</span>
+                <span class="settings-val">6 × 6</span>
+            </div>
+            <div class="settings-row">
+                <span>Version</span>
+                <span class="settings-val">1.0</span>
+            </div>
+            <button class="home-btn back-btn" onclick="showHome()">← BACK</button>
+        </div>
+    </div>
+
+    <!-- LEADERBOARD PANEL -->
+    <div id="leaderboard-panel">
+        <div class="panel-inner">
+            <h2 class="panel-title">LEADERBOARD</h2>
+            <ol id="lb-list" class="lb-list"></ol>
+            <button class="home-btn back-btn" onclick="showHome()">← BACK</button>
+        </div>
+    </div>
+
+    <!-- CREDITS PANEL -->
+    <div id="credits-panel">
+        <div class="panel-inner">
+            <h2 class="panel-title">CREDITS</h2>
+            <div class="credits-body">
+                <div class="credit-row">
+                    <span class="credit-role">Developer</span>
+                    <span class="credit-name">Veylither</span>
+                </div>
+                <div class="credit-row">
+                    <span class="credit-role">Sound Effects</span>
+                    <span class="credit-name"><a href="https://uppbeat.com" target="_blank" rel="noopener">Uppbeat.com</a></span>
+                </div>
+            </div>
+            <div class="credit-copyright">&copy; 2026 EnigmaWeave. All rights reserved.</div>
+            <button class="home-btn back-btn" onclick="showHome()">← BACK</button>
+        </div>
+    </div>
+
+    <button id="pause-btn" onclick="pauseGame()" aria-label="Pause">⏸</button>
+
+    <!-- PAUSE MENU -->
+    <div id="pause-menu">
+        <div class="pause-inner">
+            <h2 class="pause-title">PAUSED</h2>
+            <button class="home-btn primary" onclick="resumeGame()">▶ RESUME</button>
+            <button class="home-btn" onclick="restartGame()">↻ RESTART</button>
+            <button class="home-btn" id="pause-music-btn" onclick="togglePauseMusic()">♪ MUSIC</button>
+            <button class="home-btn" onclick="showHome()">⌂ MAIN MENU</button>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. EULERIAN FLUID SIMULATION (from Blocks.html)
+        // ==========================================
+        const fluidCanvas = document.getElementById('fluid-canvas');
+        const fluidCtx = fluidCanvas.getContext('2d');
+        const offscreenCanvas = document.createElement('canvas');
+        const offCtx = offscreenCanvas.getContext('2d');
+
+        const N = 80;
+        const SIZE = N * N;
+        const ITER = 10;
+        
+        offscreenCanvas.width = N; offscreenCanvas.height = N;
+        
+        let Vx = new Float32Array(SIZE), Vy = new Float32Array(SIZE);
+        let Vx0 = new Float32Array(SIZE), Vy0 = new Float32Array(SIZE);
+        let densityR = new Float32Array(SIZE), densityG = new Float32Array(SIZE), densityB = new Float32Array(SIZE);
+        let densityR0 = new Float32Array(SIZE), densityG0 = new Float32Array(SIZE), densityB0 = new Float32Array(SIZE);
+
+        function IX(x, y) {
+            x = Math.max(0, Math.min(x, N - 1)); y = Math.max(0, Math.min(y, N - 1));
+            return x + y * N;
+        }
+
+        function set_bnd(b, x) {
+            for (let i = 1; i < N - 1; i++) {
+                x[IX(0, i)] = b === 1 ? -x[IX(1, i)] : x[IX(1, i)];
+                x[IX(N - 1, i)] = b === 1 ? -x[IX(N - 2, i)] : x[IX(N - 2, i)];
+                x[IX(i, 0)] = b === 2 ? -x[IX(i, 1)] : x[IX(i, 1)];
+                x[IX(i, N - 1)] = b === 2 ? -x[IX(i, N - 2)] : x[IX(i, N - 2)];
+            }
+            x[IX(0, 0)] = 0.5 * (x[IX(1, 0)] + x[IX(0, 1)]);
+            x[IX(0, N - 1)] = 0.5 * (x[IX(1, N - 1)] + x[IX(0, N - 2)]);
+            x[IX(N - 1, 0)] = 0.5 * (x[IX(N - 2, 0)] + x[IX(0, N - 2)]);
+            x[IX(N - 1, N - 1)] = 0.5 * (x[IX(N - 2, N - 1)] + x[IX(N - 1, N - 2)]);
+        }
+
+        function advect(b, d, d0, u, v, dt) {
+            let i0, j0, i1, j1, x, y, s0, t0, s1, t1;
+            let dt0 = dt * N;
+            for (let j = 1; j < N - 1; j++) {
+                for (let i = 1; i < N - 1; i++) {
+                    x = i - dt0 * u[IX(i, j)]; y = j - dt0 * v[IX(i, j)];
+                    if (x < 0.5) x = 0.5; if (x > N + 0.5) x = N + 0.5;
+                    i0 = Math.floor(x); i1 = i0 + 1;
+                    if (y < 0.5) y = 0.5; if (y > N + 0.5) y = N + 0.5;
+                    j0 = Math.floor(y); j1 = j0 + 1;
+                    s1 = x - i0; s0 = 1.0 - s1; t1 = y - j0; t0 = 1.0 - t1;
+                    d[IX(i, j)] = s0 * (t0 * d0[IX(i0, j0)] + t1 * d0[IX(i0, j1)]) +
+                                  s1 * (t0 * d0[IX(i1, j0)] + t1 * d0[IX(i1, j1)]);
+                }
+            }
+            set_bnd(b, d);
+        }
+
+        function project(u, v, p, div) {
+            let h = 1.0 / N;
+            for (let j = 1; j < N - 1; j++) {
+                for (let i = 1; i < N - 1; i++) {
+                    div[IX(i, j)] = -0.5 * h * (u[IX(i + 1, j)] - u[IX(i - 1, j)] + v[IX(i, j + 1)] - v[IX(i, j - 1)]);
+                    p[IX(i, j)] = 0;
+                }
+            }
+            set_bnd(0, div); set_bnd(0, p);
+            for (let k = 0; k < ITER; k++) {
+                for (let j = 1; j < N - 1; j++) {
+                    for (let i = 1; i < N - 1; i++) {
+                        p[IX(i, j)] = (div[IX(i, j)] + p[IX(i - 1, j)] + p[IX(i + 1, j)] + p[IX(i, j - 1)] + p[IX(i, j + 1)]) / 4;
+                    }
+                }
+                set_bnd(0, p);
+            }
+            for (let j = 1; j < N - 1; j++) {
+                for (let i = 1; i < N - 1; i++) {
+                    u[IX(i, j)] -= 0.5 * (p[IX(i + 1, j)] - p[IX(i - 1, j)]) / h;
+                    v[IX(i, j)] -= 0.5 * (p[IX(i, j + 1)] - p[IX(i, j - 1)]) / h;
+                }
+            }
+            set_bnd(1, u); set_bnd(2, v);
+        }
+
+        function stepPhysics(dt) {
+            Vx0.set(Vx); Vy0.set(Vy);
+            advect(1, Vx, Vx0, Vx0, Vy0, dt); advect(2, Vy, Vy0, Vx0, Vy0, dt); project(Vx, Vy, Vx0, Vy0);
+            densityR0.set(densityR); densityG0.set(densityG); densityB0.set(densityB);
+            advect(0, densityR, densityR0, Vx, Vy, dt); advect(0, densityG, densityG0, Vx, Vy, dt); advect(0, densityB, densityB0, Vx, Vy, dt);
+
+            for (let i = 0; i < SIZE; i++) {
+                densityR[i] = Math.max(0, Math.min(255, densityR[i] * 0.975));
+                densityG[i] = Math.max(0, Math.min(255, densityG[i] * 0.975));
+                densityB[i] = Math.max(0, Math.min(255, densityB[i] * 0.975));
+                Vx[i] *= 0.97; Vy[i] *= 0.97;
+            }
+        }
+
+        function injectFluid(screenX, screenY, r, g, b, amount, radius, velX=0, velY=0) {
+            let gx = Math.floor((screenX / window.innerWidth) * N);
+            let gy = Math.floor((screenY / window.innerHeight) * N);
+
+            for (let i = -radius; i <= radius; i++) {
+                for (let j = -radius; j <= radius; j++) {
+                    let nx = gx + i, ny = gy + j;
+                    if (nx >= 0 && nx < N && ny >= 0 && ny < N) {
+                        let dist = Math.sqrt(i * i + j * j);
+                        if (dist <= radius) {
+                            let factor = 1.0 - (dist / radius);
+                            let idx = IX(nx, ny);
+                            densityR[idx] += r * amount * factor;
+                            densityG[idx] += g * amount * factor;
+                            densityB[idx] += b * amount * factor;
+                            Vx[idx] += velX * factor + (-j * 0.08);
+                            Vy[idx] += velY * factor + (i * 0.08);
+                        }
+                    }
+                }
+            }
+        }
+
+        function hexToRgb(hex) {
+            let result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) } : {r:255,g:255,b:255};
+        }
+
+        // Fluid interaction (mouse move swirls)
+        let lastMouseX = 0, lastMouseY = 0;
+        function handleMouseMove(e) {
+            let pos = e.touches ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : { x: e.clientX, y: e.clientY };
+            let dx = pos.x - lastMouseX;
+            let dy = pos.y - lastMouseY;
+            lastMouseX = pos.x; lastMouseY = pos.y;
+            injectFluid(pos.x, pos.y, 0.35, 0.75, 1.0, 30, 2, dx * 0.6, dy * 0.6);
+        }
+        function handleTouchSwirl(e) {
+            // Don't swirl while dragging a piece (avoids fluid under the finger).
+            if (typeof isDragging !== 'undefined' && isDragging) return;
+            handleMouseMove(e);
+        }
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('touchmove', handleTouchSwirl, {passive: true});
+
+        // ==========================================
+        // 2. ENIGMAWEAVE GAME (gameplay + UI from EnigmaWeave.html)
+        // ==========================================
+        const gameCanvas = document.getElementById('game-canvas');
+        const ctx = gameCanvas.getContext('2d');
+        let cw, ch;
+
+        const BOARD_SIZE = 6;
+        const QUEUE_SIZE = 5;
+        let grid = [];
+        let score = 0;
+        let multiplier = 1;
+        let isGameOver = false;
+        let isPaused = false;
+
+        let queue = [];
+        let heldPiece = null;
+        let canHold = true;
+
+        let boardPixelSize, cellSize, boardX, boardY;
+        let holdBoxX, holdBoxY, holdBoxSize;
+        let queueStartX, queueItemY, queueItemSize;
+
+        // ==========================================
+        // SKINS / THEMES
+        // litCell/unlitCell = board colors; lit/unlit glow; accents for UI
+        // ==========================================
+        const THEMES = [
+            {
+                id: 'cyber', name: 'CYBER',
+                litCell: '#f8f8ff', unlitCell: '#0f0c1f',
+                litGlow: '#ffffff', unlitGlow: '#62cdff',
+                accent: '#62cdff', accent2: '#f271ff',
+                hold: '#f271ff', queue: '#88ddff', valid: '#00ffcc', invalid: '#ff3366',
+                bg: 'radial-gradient(circle at top center, #2b114d 0%, #0b0813 100%)'
+            },
+            {
+                id: 'vapor', name: 'VAPORWAVE',
+                litCell: '#ffe3ff', unlitCell: '#1a0a2e',
+                litGlow: '#ff9de2', unlitGlow: '#7b5cff',
+                accent: '#ff6ec7', accent2: '#7af9ff',
+                hold: '#ff6ec7', queue: '#c4a7ff', valid: '#7af9ff', invalid: '#ff4d6d',
+                bg: 'radial-gradient(circle at top center, #3a1359 0%, #0a0518 100%)'
+            },
+            {
+                id: 'toxic', name: 'TOXIC',
+                litCell: '#eaffd0', unlitCell: '#0a1505',
+                litGlow: '#b6ff3c', unlitGlow: '#39ff14',
+                accent: '#9dff00', accent2: '#00ffa3',
+                hold: '#9dff00', queue: '#c8ff7a', valid: '#00ffa3', invalid: '#ff5252',
+                bg: 'radial-gradient(circle at top center, #16330a 0%, #050a02 100%)'
+            },
+            {
+                id: 'gold', name: 'GOLD RUSH',
+                litCell: '#fff4d6', unlitCell: '#1f1404',
+                litGlow: '#ffd54a', unlitGlow: '#a9762a',
+                accent: '#ffc233', accent2: '#ffe9a8',
+                hold: '#ffc233', queue: '#e0b35a', valid: '#ffe27a', invalid: '#ff6b3d',
+                bg: 'radial-gradient(circle at top center, #4a3410 0%, #14100a 100%)'
+            },
+            {
+                id: 'jade', name: 'JADE',
+                litCell: '#dffff2', unlitCell: '#04201a',
+                litGlow: '#7dffcf', unlitGlow: '#2fad86',
+                accent: '#3fe0a8', accent2: '#aef7dd',
+                hold: '#3fe0a8', queue: '#7fd9bd', valid: '#9dffd8', invalid: '#ff6f6f',
+                bg: 'radial-gradient(circle at top center, #0c3b30 0%, #06140f 100%)'
+            },
+            {
+                id: 'ember', name: 'EMBER',
+                litCell: '#ffe1d0', unlitCell: '#200a05',
+                litGlow: '#ff8a4c', unlitGlow: '#c2451f',
+                accent: '#ff6a2b', accent2: '#ffd1a3',
+                hold: '#ff6a2b', queue: '#ff9e6b', valid: '#ffce5c', invalid: '#ff2d55',
+                bg: 'radial-gradient(circle at top center, #4a1810 0%, #140805 100%)'
+            },
+            {
+                id: 'kawaii', name: 'KAWAII',
+                style: 'manga',   // ink-outline + halftone screentone rendering
+                sfx: 'kawaii',    // place/hold plays the uwu voice clip
+                litCell: '#ffffff', unlitCell: '#ffb3d6',
+                litGlow: '#ffffff', unlitGlow: '#ff8fc0',
+                accent: '#ff5fa2', accent2: '#ff9ec7',
+                hold: '#ff5fa2', queue: '#ffa6d0', valid: '#3fd0a0', invalid: '#ff3d6e',
+                bg: 'radial-gradient(circle at top center, #3a1326 0%, #120308 100%)',
+                ink: '#241019'    // manga outline / screentone ink
+            }
+        ];
+        let currentThemeIndex = 0;
+        function theme() { return THEMES[currentThemeIndex]; }
+
+        // Screen state: 'home' | 'playing'  (game only runs input when playing)
+        let appScreen = 'home';
+
+        function applyThemeBackground() {
+            document.body.style.background = theme().bg;
+        }
+        function setTheme(i) {
+            currentThemeIndex = i;
+            applyThemeBackground();
+        }
+
+        // All pieces available immediately (score-based game, no levels)
+        // Common pieces (frequent)
+        const commonPieces = [
+            // Tiny / basic
+            [[1]],                    // 1-tile (very useful)
+            [[1, 1]],
+            [[1], [1]],
+            [[1, 1], [1, 1]],         // square
+
+            // Small L / skew / Z
+            [[1, 1], [1, 0]],
+            [[1, 1], [0, 1]],
+            [[1, 0], [1, 1]],
+            [[0, 1], [1, 1]],
+            [[1, 1, 0], [0, 1, 1]],   // Z
+            [[0, 1, 1], [1, 1, 0]],   // S
+
+            // T pieces
+            [[1, 1, 1], [0, 1, 0]],
+            [[0, 1, 0], [1, 1, 1]],
+            [[1, 0], [1, 1], [1, 0]],
+            [[0, 1], [1, 1], [0, 1]],
+
+            // L / J
+            [[1, 0, 0], [1, 1, 1]],
+            [[0, 0, 1], [1, 1, 1]],
+            [[1, 1, 1], [1, 0, 0]],
+            [[1, 1, 1], [0, 0, 1]],
+            [[1, 0], [1, 0], [1, 1]],
+            [[0, 1], [0, 1], [1, 1]],
+
+            // W shapes
+            [[1, 0, 0], [1, 1, 0], [0, 1, 1]],
+            [[0, 0, 1], [0, 1, 1], [1, 1, 0]],
+
+            // 3-long
+            [[1, 1, 1]],
+            [[1], [1], [1]],
+
+            // 4-long
+            [[1, 1, 1, 1]],
+            [[1], [1], [1], [1]]
+        ];
+
+        // Rare big pieces (very uncommon - "wow" moments)
+        const rarePieces = [
+            // 5-straight (almost fills a row/col)
+            [[1, 1, 1, 1, 1]],
+            [[1], [1], [1], [1], [1]],
+
+            // Large L (5 long leg)
+            [[1, 0], [1, 0], [1, 0], [1, 0], [1, 1]],
+            [[1, 1, 1, 1, 1], [1, 0, 0, 0, 0]],
+
+            // Extended Z / long skew (awkward bends)
+            [[1, 1, 1, 0], [0, 1, 1, 1]],
+            [[0, 1, 1, 1], [1, 1, 1, 0]],
+
+            // Wide T
+            [[1, 1, 1, 1, 1], [0, 0, 1, 0, 0]],
+            [[0, 0, 1, 0, 0], [1, 1, 1, 1, 1]],
+
+            // Cross / Plus (center-heavy, blocks a lot)
+            [[0, 1, 0], [1, 1, 1], [0, 1, 0]],
+            [[0, 0, 1, 0, 0], [0, 1, 1, 1, 0], [1, 1, 1, 1, 1], [0, 1, 1, 1, 0], [0, 0, 1, 0, 0]],
+
+            // Big U shape (needs open space)
+            [[1, 0, 0, 1], [1, 0, 0, 1], [1, 1, 1, 1]],
+
+            // Long staircase (diagonal space hog)
+            [[1, 0, 0, 0], [1, 1, 0, 0], [0, 1, 1, 0], [0, 0, 1, 1], [0, 0, 0, 1]],
+
+            // 3x3 block (large solid area)
+            [[1, 1, 1], [1, 1, 1], [1, 1, 1]],
+
+            // Thick awkward shapes
+            [[1, 1, 0], [1, 1, 0], [1, 1, 1]],
+            [[1, 1, 1], [0, 1, 1], [0, 0, 1]],
+            [[1, 1, 1, 0], [1, 0, 1, 0], [1, 1, 1, 0]],
+
+            // Branched / complex
+            [[1, 0, 1], [1, 1, 1], [1, 0, 1]],
+            [[1, 1, 0, 0], [0, 1, 1, 0], [0, 0, 1, 1], [0, 0, 0, 1]]
+        ];
+
+        // Preview state for hover
+        let preview = null; // { startRow, startCol, valid, piece }
+
+        // ==========================================
+        // Audio + Music (local MP3 playback)
+        // ==========================================
+        let isMusicPlaying = false;
+        let hasStartedMusic = false;
+
+        // Background music: loops through every track in order, then repeats.
+        const BGM_VOLUME = 0.35;
+        const bgmPlaylist = [
+            'Bgmusic/The_Measured_Step.mp3',
+            'Bgmusic/The_Unwound_Spring.mp3',
+            'Bgmusic/Gears_in_Alignment.mp3'
+        ];
+        let bgmIndex = 0;
+        const bgmAudio = new Audio();
+        bgmAudio.volume = BGM_VOLUME;
+        bgmAudio.preload = 'auto';
+
+        // When the current song ends, advance to the next one (wrapping around).
+        bgmAudio.addEventListener('ended', () => {
+            bgmIndex = (bgmIndex + 1) % bgmPlaylist.length;
+            bgmAudio.src = bgmPlaylist[bgmIndex];
+            bgmAudio.play().catch(() => {});
+        });
+
+        function setMusicBtn(label) {
+            const btn = document.getElementById('music-btn');
+            if (btn) btn.innerText = label;
+        }
+
+        function startMusic() {
+            if (!bgmAudio.src) bgmAudio.src = bgmPlaylist[bgmIndex];
+            bgmAudio.volume = BGM_VOLUME;
+            const p = bgmAudio.play();
+            if (p && p.catch) p.catch(() => {});
+            isMusicPlaying = true;
+            hasStartedMusic = true;
+            setMusicBtn('⏸ PAUSE BGM');
+        }
+
+        function pauseMusic() {
+            bgmAudio.pause();
+            isMusicPlaying = false;
+            setMusicBtn('▶ PLAY BGM');
+        }
+
+        window.toggleMusic = function() {
+            if (isMusicPlaying) pauseMusic();
+            else startMusic();
+        };
+
+        // One-shot "transition" stinger played when the player presses PLAY.
+        const playTransitionSfx = new Audio('Uppbeat/puzzle-game-gentle-transition-betacut-1-00-02.mp3');
+        playTransitionSfx.volume = 0.6;
+        function playTransitionSound() {
+            try {
+                playTransitionSfx.currentTime = 0;
+                const p = playTransitionSfx.play();
+                if (p && p.catch) p.catch(() => {});
+            } catch (e) {}
+        }
+
+        // One-shot "place"/"hold" SFX. Each skin can pick its own sound: the
+        // default is the typing click; the kawaii skin uses the uwu voice clip.
+        const placeSfx = new Audio('soul_serenity_sounds-typing-sound-01-229863.mp3');
+        placeSfx.volume = 0.7;
+        const kawaiiSfx = new Audio('Uppbeat/uwu-kawaii-female-voice-roys-noise-willows-kawaii-uwu-sound-2-1-0m01s.mp3');
+        kawaiiSfx.volume = 0.7;
+        function playPlaceSound() {
+            const sfx = (theme().sfx === 'kawaii') ? kawaiiSfx : placeSfx;
+            try {
+                sfx.currentTime = 0;
+                const p = sfx.play();
+                if (p && p.catch) p.catch(() => {});
+            } catch (e) {}
+        }
+
+        let audioCtx = null;
+        function initAudio() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        // ===== HAPTIC FEEDBACK =====
+        let hapticsEnabled = true;
+        function haptic(pattern) {
+            if (!hapticsEnabled) return;
+            if (typeof navigator !== 'undefined' && navigator.vibrate) {
+                try { navigator.vibrate(pattern); } catch (e) {}
+            }
+        }
+        // Named patterns (ms). Arrays alternate vibrate/pause.
+        const HAPTICS = {
+            place:   18,           // soft tap on valid placement
+            invalid: [12, 40, 12], // double-buzz reject
+            hold:    10,           // light tick
+            clear:   [30, 40, 30, 40, 60], // celebratory roll
+            gameover:[60, 50, 60, 50, 120] // heavy finish
+        };
+
+        function playSound(type) {
+            if (!audioCtx) return;
+            const now = audioCtx.currentTime;
+            if (type === 'place') {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain); gain.connect(audioCtx.destination);
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(520, now);
+                osc.frequency.exponentialRampToValueAtTime(220, now + 0.12);
+                gain.gain.setValueAtTime(0, now);
+                gain.gain.linearRampToValueAtTime(0.12, now + 0.02);
+                gain.gain.exponentialRampToValueAtTime(0.005, now + 0.16);
+                osc.start(now); osc.stop(now + 0.18);
+            } else if (type === 'clear') {
+                const freqs = [480, 620, 760, 920];
+                freqs.forEach((freq, i) => {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.connect(gain); gain.connect(audioCtx.destination);
+                    osc.type = 'sawtooth';
+                    osc.frequency.value = freq;
+                    gain.gain.setValueAtTime(0, now);
+                    gain.gain.linearRampToValueAtTime(0.1, now + 0.04 + i * 0.04);
+                    gain.gain.exponentialRampToValueAtTime(0.008, now + 0.45 + i * 0.04);
+                    osc.start(now + i * 0.04); osc.stop(now + 0.85);
+                });
+            } else if (type === 'flip') {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain); gain.connect(audioCtx.destination);
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(880, now);
+                osc.frequency.exponentialRampToValueAtTime(440, now + 0.08);
+                gain.gain.setValueAtTime(0, now);
+                gain.gain.linearRampToValueAtTime(0.07, now + 0.01);
+                gain.gain.exponentialRampToValueAtTime(0.003, now + 0.1);
+                osc.start(now); osc.stop(now + 0.12);
+            }
+        }
+
+        // ==========================================
+        // Core Game Logic (EnigmaWeave rules)
+        // ==========================================
+        function initGame() {
+            grid = [];
+            for (let r = 0; r < BOARD_SIZE; r++) {
+                grid[r] = [];
+                for (let c = 0; c < BOARD_SIZE; c++) {
+                    grid[r][c] = Math.random() > 0.5 ? 1 : 0;
+                }
+            }
+            score = 0;
+            multiplier = 1;
+            isGameOver = false;
+            heldPiece = null;
+            canHold = true;
+            queue = [];
+
+            preview = null;
+
+            fillQueue();
+            clearMessage();
+            document.getElementById('game-over').style.display = 'none';
+            checkGameOver();
+        }
+
+        function getAvailablePieces() {
+            // All pieces available (score-based, no level gating)
+            return [...commonPieces, ...rarePieces];
+        }
+
+        function fillQueue() {
+            while (queue.length < QUEUE_SIZE) {
+                let piece;
+                // 5% chance for a rare big piece (makes them feel special and "wow")
+                if (rarePieces.length > 0 && Math.random() < 0.05) {
+                    piece = rarePieces[Math.floor(Math.random() * rarePieces.length)];
+                } else {
+                    piece = commonPieces[Math.floor(Math.random() * commonPieces.length)];
+                }
+                queue.push(piece);
+            }
+            // Check if the new queue makes the game unplayable
+            if (typeof checkGameOver === 'function') checkGameOver();
+        }
+
+        function showMessage(msg) {
+            const el = document.getElementById('message');
+            el.innerText = msg;
+            setTimeout(() => { if (el.innerText === msg) el.innerText = ''; }, 2200);
+        }
+
+        function clearMessage() {
+            document.getElementById('message').innerText = '';
+        }
+
+        // EnigmaWeave placement rule: all covered cells must be the same color
+        function canPlace(startRow, startCol, piece) {
+            if (!piece) return false;
+            let requiredColor = null;
+
+            for (let r = 0; r < piece.length; r++) {
+                for (let c = 0; c < piece[0].length; c++) {
+                    if (piece[r][c] === 1) {
+                        let targetRow = startRow + r;
+                        let targetCol = startCol + c;
+
+                        if (targetRow < 0 || targetRow >= BOARD_SIZE || targetCol < 0 || targetCol >= BOARD_SIZE) {
+                            return false;
+                        }
+                        let cell = grid[targetRow][targetCol];
+                        if (requiredColor === null) {
+                            requiredColor = cell;
+                        } else if (cell !== requiredColor) {
+                            return false;
+                        }
+                    }
+                }
+            }
+            return true;
+        }
+
+        function getPieceAnchor(piece) {
+            if (!piece) return { r: 0, c: 0 };
+            for (let r = 0; r < piece.length; r++) {
+                for (let c = 0; c < piece[r].length; c++) {
+                    if (piece[r][c] === 1) return { r, c };
+                }
+            }
+            return { r: 0, c: 0 };
+        }
+
+        function canFitAnywhere(piece) {
+            if (!piece) return false;
+            // Try all possible top-left positions (with some overhang allowance)
+            for (let r = -piece.length; r <= BOARD_SIZE; r++) {
+                for (let c = -piece[0].length; c <= BOARD_SIZE; c++) {
+                    if (canPlace(r, c, piece)) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        function performPlacement(startRow, startCol, piece) {
+            if (!piece) return;
+            initAudio();
+            let blocksPlaced = 0;
+            for (let r = 0; r < piece.length; r++) {
+                for (let c = 0; c < piece[r].length; c++) {
+                    if (piece[r][c] === 1) {
+                        const tr = startRow + r;
+                        const tc = startCol + c;
+                        if (tr >= 0 && tr < BOARD_SIZE && tc >= 0 && tc < BOARD_SIZE) {
+                            grid[tr][tc] = grid[tr][tc] === 1 ? 0 : 1;
+                            blocksPlaced++;
+                        }
+                    }
+                }
+            }
+            playPlaceSound();
+            haptic(HAPTICS.place);
+            // Erupt the fluid simulation from every cell of the placed piece,
+            // tinted to the active skin — placing a block "plays" the sim.
+            const pWidth = piece[0] ? piece[0].length : 1;
+            const centerX = boardX + (startCol + pWidth / 2) * cellSize;
+            const centerY = boardY + (startRow + piece.length / 2) * cellSize;
+            const splashA = hexToRgb(theme().accent);
+            const splashB = hexToRgb(theme().accent2);
+            for (let pr = 0; pr < piece.length; pr++) {
+                for (let pc = 0; pc < piece[pr].length; pc++) {
+                    if (piece[pr][pc] !== 1) continue;
+                    const sr = startRow + pr, sc = startCol + pc;
+                    if (sr < 0 || sr >= BOARD_SIZE || sc < 0 || sc >= BOARD_SIZE) continue;
+                    const px = boardX + (sc + 0.5) * cellSize;
+                    const py = boardY + (sr + 0.5) * cellSize;
+                    const col = Math.random() < 0.5 ? splashA : splashB;
+                    // Push colour outward from the piece centre for a splash burst.
+                    const vx = (px - centerX) * 0.06 + (Math.random() - 0.5) * 4;
+                    const vy = (py - centerY) * 0.06 + (Math.random() - 0.5) * 4;
+                    injectFluid(px, py, col.r / 255, col.g / 255, col.b / 255, 240, 7, vx, vy);
+                }
+            }
+            score += (blocksPlaced * 10) * multiplier;
+            queue.splice(0, 1);
+            fillQueue();
+            canHold = true;
+            preview = null;
+            checkWinCondition();
+            setTimeout(checkGameOver, 50);
+        }
+
+        function placePiece(startRow, startCol, piece) {
+            if (!piece) return;
+            performPlacement(startRow, startCol, piece);
+        }
+
+        function checkWinCondition() {
+            let sum = 0;
+            for (let r = 0; r < BOARD_SIZE; r++) {
+                for (let c = 0; c < BOARD_SIZE; c++) {
+                    sum += grid[r][c];
+                }
+            }
+
+            if (sum === 0 || sum === BOARD_SIZE * BOARD_SIZE) {
+                score += 1000 * multiplier;
+
+                // Score-based multiplier (increases with total score)
+                multiplier = Math.min(8, 1 + Math.floor(score / 800));
+
+                let msg = (sum === 0) ? "BLACKED OUT!" : "WHITED OUT!";
+                showMessage(`${msg}  ${multiplier}x`);
+
+                // Big fluid burst
+                const cx = boardX + boardPixelSize * 0.5;
+                const cy = boardY + boardPixelSize * 0.5;
+                injectFluid(cx, cy, 1.0, 0.95, 0.6, 420, 7, 0, 0);
+                injectFluid(cx - 40, cy - 30, 0.4, 1.0, 0.95, 280, 5, -8, -6);
+
+                playSound('clear');
+                haptic(HAPTICS.clear);
+
+                setTimeout(() => {
+                    // New random board, keep progress
+                    for (let r = 0; r < BOARD_SIZE; r++) {
+                        for (let c = 0; c < BOARD_SIZE; c++) {
+                            grid[r][c] = Math.random() > 0.5 ? 1 : 0;
+                        }
+                    }
+                    heldPiece = null;
+                    canHold = true;
+                    queue = [];
+                    fillQueue();
+                    preview = null;
+                    checkGameOver();
+                }, 1200);
+            }
+        }
+
+        function triggerGameOver() {
+            if (isGameOver) return;
+            isGameOver = true;
+            document.getElementById('pause-btn').style.display = 'none';
+            preview = null;
+            playSound('place');
+            haptic(HAPTICS.gameover);
+            document.getElementById('final-score').innerText = score;
+            document.getElementById('game-over').style.display = 'block';
+            setupGameOverEntry(score);
+            // Burst of red fluid behind the screen for drama
+            injectFluid(boardX + boardPixelSize * 0.5, boardY + boardPixelSize * 0.5, 1.0, 0.15, 0.25, 360, 6, 0, 0);
+        }
+
+        function checkGameOver() {
+            if (isGameOver) return;
+
+            // With hold unlocked you can freely swap between the current piece
+            // and the held one, so those are the only two reachable pieces.
+            // Deeper queue pieces can't be played until the current piece is
+            // placed, so they don't count toward avoiding game over.
+            const current = queue[0];
+            if (current && canFitAnywhere(current)) return;
+            if (heldPiece && canFitAnywhere(heldPiece)) return;
+
+            // Neither the current piece nor the held piece fits anywhere -> over.
+            triggerGameOver();
+        }
+
+        function restartGame() {
+            isGameOver = false;
+            document.getElementById('game-over').style.display = 'none';
+            startPlay();
+        }
+
+        // ===== PAUSE MENU =====
+        function pauseGame() {
+            if (appScreen !== 'playing' || isGameOver || isPaused) return;
+            isPaused = true;
+            document.getElementById('pause-btn').style.display = 'none';
+            updatePauseMusicLabel();
+            document.getElementById('pause-menu').style.display = 'flex';
+            haptic(HAPTICS.hold);
+        }
+
+        function resumeGame() {
+            isPaused = false;
+            document.getElementById('pause-menu').style.display = 'none';
+            if (appScreen === 'playing' && !isGameOver) {
+                document.getElementById('pause-btn').style.display = 'flex';
+            }
+        }
+
+        function togglePauseMusic() {
+            toggleMusic();
+            updatePauseMusicLabel();
+        }
+
+        function updatePauseMusicLabel() {
+            const b = document.getElementById('pause-music-btn');
+            if (b) b.innerText = isMusicPlaying ? '♪ MUSIC: ON' : '♪ MUSIC: OFF';
+        }
+
+        // Hold logic (matches EnigmaWeave)
+        function holdCurrentPiece() {
+            if (queue.length === 0) return;
+
+            initAudio();
+
+            const current = queue[0];
+
+            if (heldPiece === null) {
+                heldPiece = current;
+                queue.splice(0, 1);
+                fillQueue();
+            } else {
+                const temp = heldPiece;
+                heldPiece = current;
+                queue[0] = temp;
+            }
+
+            preview = null;
+            playPlaceSound();
+            haptic(HAPTICS.hold);
+            checkGameOver();
+        }
+
+        // ==========================================
+        // Input Handling (adapted for canvas + queue/hold clicks)
+        // ==========================================
+        function getPointerPos(e) {
+            if (e.touches && e.touches.length > 0) {
+                return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            }
+            return { x: e.clientX, y: e.clientY };
+        }
+
+        // Touch vs mouse tracking. On touch we use drag-to-place: press shows a
+        // preview (lifted above the finger so it's visible), drag moves it, lift places.
+        let activePointerIsTouch = false;
+        let isDragging = false;
+        // How far above the fingertip (in board cells) to float the preview anchor.
+        const TOUCH_LIFT_CELLS = 1.2;
+
+        function pointerToCell(pos, lift) {
+            // lift: number of cells to subtract from the row so the piece sits
+            // above the finger on touch (0 for mouse).
+            const col = Math.floor((pos.x - boardX) / cellSize);
+            const row = Math.floor((pos.y - boardY) / cellSize - lift);
+            return { row, col };
+        }
+
+        function updatePreviewFromPos(pos, lift) {
+            preview = null;
+            if (pos.x >= boardX - cellSize && pos.x < boardX + boardPixelSize + cellSize &&
+                pos.y >= boardY - cellSize * 3 && pos.y < boardY + boardPixelSize + cellSize) {
+                const { row, col } = pointerToCell(pos, lift);
+                const piece = queue[0];
+                if (piece) {
+                    const anchor = getPieceAnchor(piece);
+                    const startRow = row - anchor.r;
+                    const startCol = col - anchor.c;
+                    const valid = canPlace(startRow, startCol, piece);
+                    preview = { startRow, startCol, valid, piece };
+                }
+            }
+        }
+
+        function commitPreview(pos) {
+            const piece = queue[0];
+            if (!piece || !preview) { preview = null; return; }
+            const { startRow, startCol } = preview;
+            if (canPlace(startRow, startCol, piece)) {
+                placePiece(startRow, startCol, piece);
+                injectFluid(pos.x, pos.y, 0.6, 1.0, 0.85, 90, 3);
+            } else {
+                showMessage("Blocks must all be the same color!");
+                injectFluid(pos.x, pos.y, 1.0, 0.2, 0.3, 70, 3);
+                haptic(HAPTICS.invalid);
+            }
+            preview = null;
+            checkGameOver();
+        }
+
+        function handlePointerDown(e) {
+            if (e.target.tagName === 'BUTTON') return;
+            if (appScreen !== 'playing') return;
+            if (isGameOver || isPaused) return;
+            if (e.type === 'touchstart' && e.cancelable) e.preventDefault();
+
+            activePointerIsTouch = (e.type === 'touchstart');
+
+            initAudio();
+            if (!hasStartedMusic) {
+                startMusic();
+            }
+
+            const pos = getPointerPos(e);
+
+            // 1. Hold box
+            if (pos.x >= holdBoxX && pos.x <= holdBoxX + holdBoxSize &&
+                pos.y >= holdBoxY && pos.y <= holdBoxY + holdBoxSize) {
+                holdCurrentPiece();
+                return;
+            }
+
+            // 2. Queue is display-only
+            for (let i = 0; i < QUEUE_SIZE; i++) {
+                if (i >= queue.length) break;
+                const qp = queueItemPos(i);
+                if (pos.x >= qp.x && pos.x <= qp.x + queueItemSize &&
+                    pos.y >= qp.y && pos.y <= qp.y + queueItemSize) {
+                    return;
+                }
+            }
+
+            if (activePointerIsTouch) {
+                // Touch: begin a drag. Show preview lifted above the finger.
+                isDragging = true;
+                updatePreviewFromPos(pos, TOUCH_LIFT_CELLS);
+            } else {
+                // Mouse: keep instant tap-to-place behaviour.
+                if (pos.x >= boardX && pos.x < boardX + boardPixelSize &&
+                    pos.y >= boardY && pos.y < boardY + boardPixelSize) {
+                    updatePreviewFromPos(pos, 0);
+                    commitPreview(pos);
+                }
+            }
+        }
+
+        function handlePointerMove(e) {
+            if (appScreen !== 'playing') { preview = null; return; }
+            if (isGameOver || isPaused) { preview = null; return; }
+            const pos = getPointerPos(e);
+
+            if (e.type === 'touchmove') {
+                if (e.cancelable) e.preventDefault();
+                if (isDragging) {
+                    updatePreviewFromPos(pos, TOUCH_LIFT_CELLS);
+                }
+            } else {
+                // Mouse hover preview
+                updatePreviewFromPos(pos, 0);
+            }
+        }
+
+        function handlePointerUp(e) {
+            if (appScreen !== 'playing' || isGameOver || isPaused) { isDragging = false; preview = null; return; }
+            if (!isDragging) return;
+            isDragging = false;
+            const pos = getPointerPos(e);
+            commitPreview(pos);
+        }
+
+        // Bind events
+        window.addEventListener('mousedown', handlePointerDown);
+        window.addEventListener('touchstart', handlePointerDown, {passive: false});
+        window.addEventListener('mousemove', handlePointerMove);
+        window.addEventListener('touchmove', handlePointerMove, {passive: false});
+        window.addEventListener('touchend', handlePointerUp, {passive: false});
+        window.addEventListener('touchcancel', () => { isDragging = false; preview = null; });
+
+        // Clear preview on mouse leave board area roughly
+        window.addEventListener('mouseout', () => { if (!activePointerIsTouch) preview = null; });
+
+        // ==========================================
+        // Rendering
+        // ==========================================
+        let isPortrait = false;
+
+        function resizeGame() {
+            cw = window.innerWidth;
+            ch = window.innerHeight;
+            let dpr = window.devicePixelRatio || 1;
+            gameCanvas.width = cw * dpr; gameCanvas.height = ch * dpr;
+            gameCanvas.style.width = cw + 'px'; gameCanvas.style.height = ch + 'px';
+            ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.scale(dpr, dpr);
+            fluidCanvas.width = cw; fluidCanvas.height = ch;
+
+            // Portrait / narrow screens: stack the UI instead of side-by-side.
+            isPortrait = cw < 720 || cw < ch;
+
+            if (isPortrait) {
+                // Board is the star — make it as large as width comfortably allows.
+                boardPixelSize = Math.min(cw * 0.92, ch * 0.6, 560);
+                cellSize = boardPixelSize / BOARD_SIZE;
+                boardX = cw / 2 - boardPixelSize / 2;
+                boardY = ch * 0.30;
+
+                // Hold box: top-left above the board.
+                holdBoxSize = Math.max(64, cellSize * 2.1);
+                holdBoxX = boardX;
+                holdBoxY = boardY - holdBoxSize - 36;
+
+                // Queue: horizontal strip below the board.
+                const stripW = boardPixelSize;
+                queueItemSize = Math.max(40, Math.min(64, Math.floor((stripW - (QUEUE_SIZE - 1) * 10) / QUEUE_SIZE)));
+                queueStartX = boardX;
+                queueItemY = boardY + boardPixelSize + 46;
+            } else {
+                // Desktop: Hold left | Board center | Queue right
+                boardPixelSize = Math.min(cw * 0.52, ch * 0.72, 480);
+                cellSize = boardPixelSize / BOARD_SIZE;
+                boardX = cw / 2 - boardPixelSize / 2;
+                boardY = ch / 2 - boardPixelSize / 2 + 28;
+
+                holdBoxSize = Math.max(78, cellSize * 2.6);
+                holdBoxX = boardX - holdBoxSize - 42;
+                holdBoxY = boardY + (boardPixelSize - holdBoxSize) / 2;
+
+                const availableHeight = boardPixelSize * 0.92;
+                queueItemSize = Math.max(42, Math.floor(availableHeight / (QUEUE_SIZE + 0.3)));
+                queueStartX = boardX + boardPixelSize + 36;
+                queueItemY = boardY + 8;
+            }
+        }
+        window.addEventListener('resize', resizeGame);
+        window.addEventListener('orientationchange', () => setTimeout(resizeGame, 100));
+        resizeGame();
+
+        function drawNeonBlock(x, y, size, color, alpha = 1) {
+            const t = theme();
+            if (t.style === 'manga') {
+                // Flat fill + bold ink outline (manga panel look, no glow).
+                ctx.save();
+                ctx.globalAlpha = alpha;
+                ctx.fillStyle = color;
+                ctx.fillRect(x, y, size, size);
+                ctx.strokeStyle = t.ink || '#241019';
+                ctx.lineWidth = Math.max(1.2, size * 0.09);
+                ctx.strokeRect(x + 0.6, y + 0.6, size - 1.2, size - 1.2);
+                ctx.restore();
+                return;
+            }
+
+            ctx.save();
+            ctx.globalAlpha = alpha;
+
+            const r = Math.max(3, size * 0.12);
+            ctx.shadowColor = color;
+            ctx.shadowBlur = 14;
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.moveTo(x + r, y);
+            ctx.arcTo(x + size, y, x + size, y + size, r);
+            ctx.arcTo(x + size, y + size, x, y + size, r);
+            ctx.arcTo(x, y + size, x, y, r);
+            ctx.arcTo(x, y, x + size, y, r);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // top highlight
+            ctx.fillStyle = 'rgba(255,255,255,0.28)';
+            ctx.beginPath();
+            ctx.moveTo(x + r, y);
+            ctx.arcTo(x + size, y, x + size, y + size * 0.32, r);
+            ctx.lineTo(x, y + size * 0.32);
+            ctx.arcTo(x, y, x + size, y, r);
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        // Draw a shape using neon blocks (for hold/queue previews)
+        function drawPiecePreview(baseX, baseY, piece, cellSz, color = '#00ffcc', alpha = 1) {
+            const rows = piece.length;
+            const cols = piece[0].length;
+            const s = cellSz;
+
+            // center the piece in the box
+            const pw = cols * s;
+            const ph = rows * s;
+            const ox = baseX + (queueItemSize - pw) / 2;
+            const oy = baseY + (queueItemSize - ph) / 2;
+
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    if (piece[r][c] === 1) {
+                        drawNeonBlock(ox + c * s, oy + r * s, s - 3, color, alpha);
+                    }
+                }
+            }
+        }
+
+        // Manga skin: white "paper" cells + pink halftone screentone + ink outlines.
+        function drawMangaCell(val, x, y, size, t) {
+            const ink = t.ink || '#241019';
+            // Translucent paper lets the fluid sim glow through; ink + tone stay solid.
+            ctx.globalAlpha = val === 1 ? 0.92 : 0.72;
+            ctx.fillStyle = val === 1 ? t.litCell : t.unlitCell;
+            ctx.fillRect(x, y, size, size);
+            ctx.globalAlpha = 1;
+
+            // Screentone dots on the toned (unlit) cells.
+            if (val === 0) {
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(x, y, size, size);
+                ctx.clip();
+                ctx.fillStyle = 'rgba(36,16,25,0.30)';
+                const step = Math.max(5, size / 5);
+                const dot = Math.max(0.8, step * 0.18);
+                for (let yy = y + step * 0.5; yy < y + size; yy += step) {
+                    for (let xx = x + step * 0.5; xx < x + size; xx += step) {
+                        ctx.beginPath();
+                        ctx.arc(xx, yy, dot, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                }
+                ctx.restore();
+            }
+
+            // Bold ink outline (no glow) — the manga panel edge.
+            ctx.strokeStyle = ink;
+            ctx.lineWidth = Math.max(1.4, size * 0.07);
+            ctx.strokeRect(x + 0.7, y + 0.7, size - 1.4, size - 1.4);
+        }
+
+        // Draw single cell of the board (black/white invert style with neon flair)
+        function drawBoardCell(r, c, x, y, sz) {
+            const val = grid[r][c];
+            const pad = 1.5;
+            const t = theme();
+
+            if (t.style === 'manga') {
+                drawMangaCell(val, x + pad, y + pad, sz - pad * 2, t);
+                return;
+            }
+
+            let cellAlpha;
+            if (val === 1) {
+                ctx.fillStyle = t.litCell;
+                ctx.shadowColor = t.litGlow;
+                ctx.shadowBlur = 6;
+                cellAlpha = 0.95;
+            } else {
+                ctx.fillStyle = t.unlitCell;
+                ctx.shadowColor = t.unlitGlow;
+                ctx.shadowBlur = 3;
+                cellAlpha = 0.72;
+            }
+
+            // Translucent fills let the fluid sim glow up through the board.
+            ctx.globalAlpha = cellAlpha;
+            ctx.fillRect(x + pad, y + pad, sz - pad * 2, sz - pad * 2);
+            ctx.globalAlpha = 1;
+            ctx.shadowBlur = 0;
+
+            // subtle grid edge
+            ctx.strokeStyle = val === 1 ? 'rgba(0,0,0,0.45)' : 'rgba(98, 205, 255, 0.25)';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(x + pad, y + pad, sz - pad * 2, sz - pad * 2);
+        }
+
+        // Draw score / multiplier in top-left (score-based, no levels)
+        function drawHUD() {
+            const x = 28;
+            let y = 68;
+            const t = theme();
+
+            // SCORE
+            ctx.textAlign = 'left';
+            ctx.fillStyle = t.accent;
+            ctx.font = '10px Courier New';
+            ctx.fillText('SCORE', x, y - 20);
+
+            ctx.shadowColor = t.accent;
+            ctx.shadowBlur = 8;
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 22px Courier New';
+            ctx.fillText(String(score), x, y);
+            ctx.shadowBlur = 0;
+
+            // MULTIPLIER (score driven)
+            const mx = x + 120;
+            ctx.fillStyle = t.accent2;
+            ctx.font = '10px Courier New';
+            ctx.fillText('MULT', mx, y - 20);
+
+            ctx.shadowColor = t.accent2;
+            ctx.shadowBlur = 8;
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 22px Courier New';
+            ctx.fillText(multiplier + 'x', mx, y);
+            ctx.shadowBlur = 0;
+        }
+
+        function drawBoard() {
+            // Board outer neon frame
+            ctx.strokeStyle = theme().accent;
+            ctx.lineWidth = 2.5;
+            ctx.strokeRect(boardX - 1, boardY - 1, boardPixelSize + 2, boardPixelSize + 2);
+
+            // Inner background — semi-opaque; a little fluid still glows through.
+            ctx.fillStyle = 'rgba(10, 8, 24, 0.5)';
+            ctx.fillRect(boardX, boardY, boardPixelSize, boardPixelSize);
+
+            // Cells
+            for (let r = 0; r < BOARD_SIZE; r++) {
+                for (let c = 0; c < BOARD_SIZE; c++) {
+                    const x = boardX + c * cellSize;
+                    const y = boardY + r * cellSize;
+                    drawBoardCell(r, c, x, y, cellSize);
+                }
+            }
+
+            // Preview overlay
+            if (preview && preview.piece) {
+                const p = preview.piece;
+                const color = preview.valid ? theme().valid : theme().invalid;
+                ctx.save();
+                ctx.globalAlpha = preview.valid ? 0.75 : 0.55;
+
+                for (let r = 0; r < p.length; r++) {
+                    for (let c = 0; c < p[0].length; c++) {
+                        if (p[r][c] === 1) {
+                            const tr = preview.startRow + r;
+                            const tc = preview.startCol + c;
+                            if (tr >= 0 && tr < BOARD_SIZE && tc >= 0 && tc < BOARD_SIZE) {
+                                const px = boardX + tc * cellSize;
+                                const py = boardY + tr * cellSize;
+                                ctx.fillStyle = color;
+                                ctx.fillRect(px + 2, py + 2, cellSize - 4, cellSize - 4);
+                            }
+                        }
+                    }
+                }
+                ctx.restore();
+
+                // Outline only the covered in-bounds area
+                let minR = 99, minC = 99, maxR = -1, maxC = -1;
+                for (let r = 0; r < p.length; r++) {
+                    for (let c = 0; c < p[0].length; c++) {
+                        if (p[r][c] === 1) {
+                            const tr = preview.startRow + r;
+                            const tc = preview.startCol + c;
+                            if (tr >= 0 && tr < BOARD_SIZE && tc >= 0 && tc < BOARD_SIZE) {
+                                minR = Math.min(minR, tr); minC = Math.min(minC, tc);
+                                maxR = Math.max(maxR, tr); maxC = Math.max(maxC, tc);
+                            }
+                        }
+                    }
+                }
+                if (maxR >= 0) {
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(
+                        boardX + minC * cellSize + 1.5,
+                        boardY + minR * cellSize + 1.5,
+                        (maxC - minC + 1) * cellSize - 3,
+                        (maxR - minR + 1) * cellSize - 3
+                    );
+                }
+            }
+
+            // Thin grid lines
+            ctx.strokeStyle = theme().style === 'manga' ? 'rgba(36,16,25,0.16)' : 'rgba(98, 205, 255, 0.18)';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= BOARD_SIZE; i++) {
+                const x = boardX + i * cellSize;
+                const y = boardY + i * cellSize;
+                ctx.beginPath();
+                ctx.moveTo(boardX, y);
+                ctx.lineTo(boardX + boardPixelSize, y);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(x, boardY);
+                ctx.lineTo(x, boardY + boardPixelSize);
+                ctx.stroke();
+            }
+        }
+
+        // Position of queue slot i — vertical column (desktop) or horizontal strip (mobile)
+        function queueItemPos(i) {
+            if (isPortrait) {
+                return { x: queueStartX + i * (queueItemSize + 10), y: queueItemY };
+            }
+            return { x: queueStartX, y: queueItemY + i * (queueItemSize + 14) };
+        }
+
+        function drawSideUI() {
+            const t = theme();
+            // === HOLD (left) ===
+            ctx.fillStyle = t.hold;
+            ctx.font = '12px Courier New';
+            ctx.textAlign = 'center';
+            ctx.fillText('HOLD', holdBoxX + holdBoxSize / 2, holdBoxY - 10);
+
+            // Box background
+            ctx.strokeStyle = canHold ? t.hold : '#555';
+            ctx.lineWidth = 2;
+            ctx.fillStyle = 'rgba(15, 10, 30, 0.8)';
+            ctx.fillRect(holdBoxX, holdBoxY, holdBoxSize, holdBoxSize);
+            ctx.strokeRect(holdBoxX, holdBoxY, holdBoxSize, holdBoxSize);
+
+            if (heldPiece) {
+                const miniCell = holdBoxSize / 4.2;
+                const rows = heldPiece.length;
+                const cols = heldPiece[0].length;
+                const pw = cols * miniCell;
+                const ph = rows * miniCell;
+                const ox = holdBoxX + (holdBoxSize - pw) / 2;
+                const oy = holdBoxY + (holdBoxSize - ph) / 2;
+
+                const canFit = canFitAnywhere(heldPiece);
+                const alpha = (canHold && canFit) ? 1 : 0.4;
+
+                for (let r = 0; r < rows; r++) {
+                    for (let c = 0; c < cols; c++) {
+                        if (heldPiece[r][c] === 1) {
+                            drawNeonBlock(ox + c * miniCell, oy + r * miniCell, miniCell - 2, t.hold, alpha);
+                        }
+                    }
+                }
+                if (!canFit) {
+                    ctx.fillStyle = 'rgba(255, 51, 51, 0.35)';
+                    ctx.fillRect(holdBoxX + 2, holdBoxY + 2, holdBoxSize - 4, holdBoxSize - 4);
+                    ctx.strokeStyle = '#ff3333';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(holdBoxX + 3, holdBoxY + 3, holdBoxSize - 6, holdBoxSize - 6);
+                }
+            } else {
+                ctx.fillStyle = 'rgba(180,180,210,0.4)';
+                ctx.font = '10px Courier New';
+                ctx.fillText('EMPTY', holdBoxX + holdBoxSize / 2, holdBoxY + holdBoxSize / 2 + 4);
+            }
+
+            // === QUEUE === (vertical on desktop, horizontal strip on mobile)
+            ctx.fillStyle = t.accent;
+            ctx.textAlign = 'left';
+            ctx.fillText('NEXT', queueStartX, queueItemY - 10);
+
+            for (let i = 0; i < QUEUE_SIZE; i++) {
+                const qp = queueItemPos(i);
+                const qx = qp.x;
+                const qy = qp.y;
+
+                const isSelected = (i === 0);
+                const piece = queue[i];
+
+                // Box
+                ctx.fillStyle = 'rgba(15, 10, 30, 0.85)';
+                ctx.strokeStyle = isSelected ? t.valid : '#4a4a6a';
+                ctx.lineWidth = isSelected ? 2.5 : 1.5;
+                ctx.fillRect(qx, qy, queueItemSize, queueItemSize);
+                ctx.strokeRect(qx, qy, queueItemSize, queueItemSize);
+
+                if (piece) {
+                    const mini = queueItemSize / 4.5;
+                    const canFit = canFitAnywhere(piece);
+                    const alpha = canFit ? 1 : 0.4;
+                    drawPiecePreview(qx, qy, piece, mini, isSelected ? t.valid : t.queue, alpha);
+                    if (!canFit) {
+                        ctx.fillStyle = 'rgba(255, 51, 51, 0.35)';
+                        ctx.fillRect(qx + 1, qy + 1, queueItemSize - 2, queueItemSize - 2);
+                        ctx.strokeStyle = '#ff3333';
+                        ctx.lineWidth = 2;
+                        ctx.strokeRect(qx + 2, qy + 2, queueItemSize - 4, queueItemSize - 4);
+                    }
+                }
+            }
+
+            // Label under queue
+            ctx.fillStyle = '#8b9bb4';
+            ctx.font = '10px Courier New';
+            if (isPortrait) {
+                ctx.fillText('UPCOMING (in order)', queueStartX, queueItemY + queueItemSize + 14);
+            } else {
+                ctx.fillText('UPCOMING (in order)', queueStartX, queueItemY + QUEUE_SIZE * (queueItemSize + 14) + 12);
+            }
+        }
+
+        function drawLabels() {
+            if (isPortrait) return; // avoid overlap with the queue strip below the board
+            ctx.fillStyle = 'rgba(139, 155, 180, 0.6)';
+            ctx.font = '11px Courier New';
+            ctx.textAlign = 'center';
+            ctx.fillText('CLICK BOARD TO PLACE', boardX + boardPixelSize / 2, boardY + boardPixelSize + 26);
+        }
+
+        const imgData = offCtx.createImageData(N, N);
+        const data = imgData.data;
+
+        function render() {
+            stepPhysics(0.095);
+
+            // Update fluid image
+            for (let i = 0; i < SIZE; i++) {
+                let p = i * 4;
+                data[p] = densityR[i]; data[p+1] = densityG[i]; data[p+2] = densityB[i]; data[p+3] = 255;
+            }
+            offCtx.putImageData(imgData, 0, 0);
+            fluidCtx.clearRect(0, 0, cw, ch);
+            fluidCtx.drawImage(offscreenCanvas, 0, 0, N, N, 0, 0, cw, ch);
+
+            // Clear game canvas
+            ctx.clearRect(0, 0, cw, ch);
+
+            if (appScreen !== 'playing') {
+                requestAnimationFrame(render);
+                return;
+            }
+
+            // Auto-detect unplayable state (in case other triggers missed)
+            if (!isGameOver) {
+                checkGameOver();
+            }
+
+            // Draw HUD (score etc) first at top-left — OFF the board
+            drawHUD();
+
+            // Draw main game elements
+            drawBoard();
+            drawSideUI();
+            drawLabels();
+
+            requestAnimationFrame(render);
+        }
+
+        // Keyboard support for convenience (space = hold)
+        window.addEventListener('keydown', (e) => {
+            const k = e.key.toLowerCase();
+            // Esc / P toggles the pause menu while playing.
+            if (appScreen === 'playing' && !isGameOver && (e.key === 'Escape' || k === 'p')) {
+                e.preventDefault();
+                if (isPaused) resumeGame(); else pauseGame();
+                return;
+            }
+            if (isGameOver || isPaused) return;
+            if (e.key === ' ' || e.key === 'Spacebar') {
+                e.preventDefault();
+                holdCurrentPiece();
+            }
+            if (k === 'h') {
+                holdCurrentPiece();
+            }
+        });
+
+        // ==========================================
+        // LEADERBOARD  (Supabase-backed — shared across all visitors)
+        // Storage is isolated in `LB`: top / qualifies / submit hit Supabase's
+        // auto-generated REST API. The anon key is public by design — Row-Level
+        // Security on the `leaderboard` table is what protects the data. Swap
+        // these methods for another backend and nothing else needs to change.
+        // ==========================================
+        const LB = (function () {
+            const SUPABASE_URL = 'https://uvdtkrcwezvihcjdhsnz.supabase.co';
+            const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV2ZHRrcmN3ZXp2aWhjamRoc256Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4MzA3MzUsImV4cCI6MjA5NzQwNjczNX0.zg7ty-S9_haByreO4F1HoftkG5er-DK-AwtaVufycNM';
+            const TABLE = 'leaderboard';
+            const MAX = 10;
+            const REST = SUPABASE_URL + '/rest/v1/' + TABLE;
+            const AUTH = { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY };
+
+            return {
+                // Top entries, highest score first. Rejects on network/server error.
+                top: function (n) {
+                    const url = REST + '?select=name,score&order=score.desc&limit=' + (n || MAX);
+                    return fetch(url, { headers: AUTH }).then(function (r) {
+                        if (!r.ok) throw new Error('read ' + r.status);
+                        return r.json();
+                    });
+                },
+                // Would this score make the visible top MAX? Resolves false on error
+                // so a hiccup just skips the name prompt rather than blocking.
+                qualifies: function (score) {
+                    if (score <= 0) return Promise.resolve(false);
+                    const url = REST + '?select=score&order=score.desc&limit=' + MAX;
+                    return fetch(url, { headers: AUTH })
+                        .then(function (r) { return r.ok ? r.json() : []; })
+                        .then(function (rows) {
+                            if (rows.length < MAX) return true;
+                            return score > rows[rows.length - 1].score;
+                        })
+                        .catch(function () { return false; });
+                },
+                // Insert a score. Resolves to 1-based global rank (0 if the rank
+                // lookup fails but the save worked). Rejects if the save fails.
+                submit: function (name, score) {
+                    const row = {
+                        name: String(name || 'YOU').slice(0, 12).toUpperCase(),
+                        score: Math.floor(score)
+                    };
+                    return fetch(REST, {
+                        method: 'POST',
+                        headers: Object.assign({ 'Content-Type': 'application/json', Prefer: 'return=minimal' }, AUTH),
+                        body: JSON.stringify(row)
+                    }).then(function (r) {
+                        if (!r.ok) throw new Error('submit ' + r.status);
+                        // Best-effort global rank = (# scores strictly greater) + 1.
+                        return fetch(REST + '?score=gt.' + row.score, {
+                            method: 'HEAD',
+                            headers: Object.assign({ Prefer: 'count=exact' }, AUTH)
+                        }).then(function (cr) {
+                            const range = cr.headers.get('content-range');
+                            const total = range ? parseInt(range.split('/').pop(), 10) : NaN;
+                            return Number.isFinite(total) ? total + 1 : 0;
+                        }).catch(function () { return 0; });
+                    });
+                }
+            };
+        })();
+
+        // Escape user-entered names before injecting into the DOM (safe for a
+        // public site, and essential once the board goes global).
+        function escapeHtml(s) {
+            return String(s).replace(/[&<>"']/g, function (c) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+            });
+        }
+
+        let pendingScore = 0;
+        let scoreSubmitted = false;
+
+        // On game over: show the name entry only if the score made the board.
+        function setupGameOverEntry(finalScore) {
+            pendingScore = finalScore;
+            scoreSubmitted = false;
+            const entry = document.getElementById('lb-entry');
+            const saved = document.getElementById('lb-saved');
+            entry.style.display = 'none';
+            saved.style.display = 'none';
+            saved.innerText = '';
+            LB.qualifies(finalScore).then(function (ok) {
+                if (ok && !scoreSubmitted) {
+                    document.getElementById('lb-name').value = '';
+                    entry.style.display = 'block';
+                }
+            });
+        }
+
+        function submitScore() {
+            if (scoreSubmitted) return;
+            scoreSubmitted = true;
+            const input = document.getElementById('lb-name');
+            const name = (input.value || '').trim() || 'YOU';
+            const saved = document.getElementById('lb-saved');
+            LB.submit(name, pendingScore).then(function (rank) {
+                document.getElementById('lb-entry').style.display = 'none';
+                saved.innerText = rank > 0 ? ('✓ SAVED — RANK #' + rank) : '✓ SAVED';
+                saved.style.display = 'block';
+                haptic(HAPTICS.hold);
+            }).catch(function () {
+                scoreSubmitted = false; // let them try again
+                saved.innerText = '⚠ COULDN\'T SAVE — TRY AGAIN';
+                saved.style.display = 'block';
+            });
+        }
+
+        function renderLeaderboard() {
+            const listEl = document.getElementById('lb-list');
+            listEl.innerHTML = '<li class="lb-empty">Loading…</li>';
+            LB.top(10).then(function (rows) {
+                if (!rows.length) {
+                    listEl.innerHTML = '<li class="lb-empty">No scores yet — be the first!</li>';
+                    return;
+                }
+                listEl.innerHTML = rows.map(function (e, i) {
+                    return '<li class="lb-row">' +
+                        '<span class="lb-rank">' + (i + 1) + '</span>' +
+                        '<span class="lb-name">' + escapeHtml(e.name) + '</span>' +
+                        '<span class="lb-score">' + Number(e.score).toLocaleString() + '</span>' +
+                        '</li>';
+                }).join('');
+            }).catch(function () {
+                listEl.innerHTML = '<li class="lb-empty">Couldn\'t load leaderboard — check your connection.</li>';
+            });
+        }
+
+        function openLeaderboard() {
+            appScreen = 'home';
+            document.getElementById('home-screen').style.display = 'none';
+            document.getElementById('skins-panel').style.display = 'none';
+            document.getElementById('settings-panel').style.display = 'none';
+            document.getElementById('game-over').style.display = 'none';
+            document.getElementById('ui-layer').style.display = 'none';
+            document.getElementById('message').style.display = 'none';
+            document.getElementById('leaderboard-panel').style.display = 'flex';
+            renderLeaderboard();
+        }
+
+        function openCredits() {
+            appScreen = 'home';
+            document.getElementById('home-screen').style.display = 'none';
+            document.getElementById('skins-panel').style.display = 'none';
+            document.getElementById('settings-panel').style.display = 'none';
+            document.getElementById('leaderboard-panel').style.display = 'none';
+            document.getElementById('game-over').style.display = 'none';
+            document.getElementById('ui-layer').style.display = 'none';
+            document.getElementById('message').style.display = 'none';
+            document.getElementById('credits-panel').style.display = 'flex';
+        }
+
+        // ==========================================
+        // SCREEN NAVIGATION (home / skins / settings)
+        // ==========================================
+        function showHome() {
+            appScreen = 'home';
+            isGameOver = false;
+            document.getElementById('game-over').style.display = 'none';
+            document.getElementById('skins-panel').style.display = 'none';
+            document.getElementById('settings-panel').style.display = 'none';
+            document.getElementById('leaderboard-panel').style.display = 'none';
+            document.getElementById('credits-panel').style.display = 'none';
+            document.getElementById('pause-menu').style.display = 'none';
+            document.getElementById('pause-btn').style.display = 'none';
+            isPaused = false;
+            document.getElementById('home-screen').style.display = 'flex';
+            document.getElementById('ui-layer').style.display = 'none';
+            document.getElementById('message').style.display = 'none';
+        }
+
+        function startPlay() {
+            // Play the "enter game" transition stinger, and start the background
+            // music playlist the first time the player presses PLAY.
+            playTransitionSound();
+            if (!hasStartedMusic) startMusic();
+
+            document.getElementById('home-screen').style.display = 'none';
+            document.getElementById('skins-panel').style.display = 'none';
+            document.getElementById('settings-panel').style.display = 'none';
+            document.getElementById('leaderboard-panel').style.display = 'none';
+            document.getElementById('credits-panel').style.display = 'none';
+            document.getElementById('ui-layer').style.display = 'flex';
+            document.getElementById('message').style.display = 'block';
+            document.getElementById('pause-menu').style.display = 'none';
+            document.getElementById('pause-btn').style.display = 'flex';
+            isPaused = false;
+            appScreen = 'playing';
+            initGame();
+        }
+
+        function openSkins() {
+            document.getElementById('home-screen').style.display = 'none';
+            document.getElementById('skins-panel').style.display = 'flex';
+            buildSkinList();
+        }
+
+        function openSettings() {
+            document.getElementById('home-screen').style.display = 'none';
+            document.getElementById('settings-panel').style.display = 'flex';
+        }
+
+        function buildSkinList() {
+            const grid = document.getElementById('skin-grid');
+            grid.innerHTML = '';
+            THEMES.forEach((th, i) => {
+                const card = document.createElement('div');
+                card.className = 'skin-card' + (i === currentThemeIndex ? ' selected' : '');
+                card.onclick = () => { setTheme(i); buildSkinList(); };
+                card.innerHTML = `
+                    <div class="skin-swatch">
+                        <span class="sw" style="background:${th.litCell};box-shadow:0 0 10px ${th.litGlow}"></span>
+                        <span class="sw" style="background:${th.unlitCell};box-shadow:0 0 8px ${th.unlitGlow}"></span>
+                        <span class="sw" style="background:${th.accent};box-shadow:0 0 10px ${th.accent}"></span>
+                        <span class="sw" style="background:${th.accent2};box-shadow:0 0 10px ${th.accent2}"></span>
+                    </div>
+                    <div class="skin-name" style="color:${th.accent}">${th.name}</div>
+                    ${i === currentThemeIndex ? '<div class="skin-active">ACTIVE</div>' : ''}
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        window.startPlay = startPlay;
+        window.showHome = showHome;
+        window.openSkins = openSkins;
+        window.openSettings = openSettings;
+        window.openLeaderboard = openLeaderboard;
+        window.submitScore = submitScore;
+        window.openCredits = openCredits;
+        window.pauseGame = pauseGame;
+        window.resumeGame = resumeGame;
+        window.togglePauseMusic = togglePauseMusic;
+
+        window.toggleHaptics = function() {
+            hapticsEnabled = !hapticsEnabled;
+            const btn = document.getElementById('haptics-toggle');
+            if (btn) btn.innerText = hapticsEnabled ? 'ON' : 'OFF';
+            if (hapticsEnabled) haptic(HAPTICS.place); // confirm buzz when enabling
+        };
+
+        // Boot: start on home screen with fluid running
+        applyThemeBackground();
+        showHome();
+        render();
+    </script>
+</body>
+</html>
