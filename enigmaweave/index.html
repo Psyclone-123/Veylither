@@ -1401,20 +1401,9 @@
                 playSound('clear');
                 haptic(HAPTICS.clear);
 
-                setTimeout(() => {
-                    // New random board, keep progress
-                    for (let r = 0; r < BOARD_SIZE; r++) {
-                        for (let c = 0; c < BOARD_SIZE; c++) {
-                            grid[r][c] = Math.random() > 0.5 ? 1 : 0;
-                        }
-                    }
-                    heldPiece = null;
-                    canHold = true;
-                    queue = [];
-                    fillQueue();
-                    preview = null;
-                    checkGameOver();
-                }, 1200);
+                // Board stays cleared — no scramble. Play continues on the solid
+                // board (any piece fits), and the next placement starts inverting
+                // cells again. The placed piece already advanced the queue.
             }
         }
 
@@ -1435,15 +1424,18 @@
         function checkGameOver() {
             if (isGameOver) return;
 
-            // With hold unlocked you can freely swap between the current piece
-            // and the held one, so those are the only two reachable pieces.
-            // Deeper queue pieces can't be played until the current piece is
-            // placed, so they don't count toward avoiding game over.
             const current = queue[0];
+
+            // Current piece is placeable, or the held piece is (you can swap to
+            // it) — game continues.
             if (current && canFitAnywhere(current)) return;
             if (heldPiece && canFitAnywhere(heldPiece)) return;
 
-            // Neither the current piece nor the held piece fits anywhere -> over.
+            // Hold is empty: the player can always stash the current piece there
+            // (even an unplaceable one) and bring up the next piece, so the run
+            // isn't over yet. Only end once hold is full and nothing fits.
+            if (!heldPiece) return;
+
             triggerGameOver();
         }
 
@@ -1999,6 +1991,14 @@
                     ctx.lineWidth = 2;
                     ctx.strokeRect(holdBoxX + 3, holdBoxY + 3, holdBoxSize - 6, holdBoxSize - 6);
                 }
+            } else if (queue[0] && !canFitAnywhere(queue[0])) {
+                // Current piece can't be placed and hold is open — prompt the
+                // player to stash it here so the run doesn't dead-end.
+                ctx.fillStyle = t.invalid;
+                const hintFs = Math.max(9, Math.min(12, holdBoxSize * 0.14));
+                ctx.font = 'bold ' + hintFs + 'px Courier New';
+                ctx.fillText("CAN'T FIT", holdBoxX + holdBoxSize / 2, holdBoxY + holdBoxSize / 2 - 3);
+                ctx.fillText('TAP TO HOLD', holdBoxX + holdBoxSize / 2, holdBoxY + holdBoxSize / 2 + hintFs + 1);
             } else {
                 ctx.fillStyle = 'rgba(180,180,210,0.4)';
                 ctx.font = '10px Courier New';
