@@ -628,7 +628,6 @@
 
     <div id="ui-layer">
         <div class="arcade-container">
-            <div class="arcade-subtitle">— INVERT THE GRID —</div>
             <h1 class="arcade-header">ENIGMAWEAVE</h1>
         </div>
     </div>
@@ -653,7 +652,6 @@
     <!-- HOME SCREEN -->
     <div id="home-screen">
         <div class="home-title-wrap">
-            <div class="home-subtitle">— INVERT THE GRID —</div>
             <h1 class="home-title">ENIGMAWEAVE</h1>
         </div>
         <div class="home-menu">
@@ -1073,6 +1071,45 @@
             [[1, 1, 0, 0], [0, 1, 1, 0], [0, 0, 1, 1], [0, 0, 0, 1]]
         ];
 
+        // --- DIFFICULTY TIERS ---
+        // Pieces are graded by size so difficulty can ramp: small, easy-to-place
+        // shapes dominate early (so new players can actually clear the board),
+        // and bigger / awkward pieces phase in as the score climbs.
+        function pieceCellCount(p) {
+            let n = 0;
+            for (let r = 0; r < p.length; r++)
+                for (let c = 0; c < p[r].length; c++) n += p[r][c];
+            return n;
+        }
+        function pieceSpan(p) {
+            return Math.max(p.length, p[0] ? p[0].length : 0);
+        }
+        // EASY = tiny shapes (<=4 cells within a 2x2): single, dominoes, 2x2
+        // square, small corners. MEDIUM = the rest of the commons (lines, T/L/J/
+        // S/Z, W, 4-long). HARD = the big "wow" rare pieces.
+        const EASY_PIECES = commonPieces.filter(p => pieceCellCount(p) <= 4 && pieceSpan(p) <= 2);
+        const MEDIUM_PIECES = commonPieces.filter(p => !(pieceCellCount(p) <= 4 && pieceSpan(p) <= 2));
+        const HARD_PIECES = rarePieces;
+
+        function randFrom(arr) {
+            return arr[Math.floor(Math.random() * arr.length)];
+        }
+
+        // Pick the next piece, weighting the tiers by current score.
+        function pickNextPiece() {
+            const s = score;
+            let pEasy, pMed; // remainder goes to HARD
+            if (s < 600)       { pEasy = 1.00; pMed = 0.00; }  // opening: easy only
+            else if (s < 1500) { pEasy = 0.70; pMed = 0.30; }  // warm-up: + medium
+            else if (s < 3500) { pEasy = 0.45; pMed = 0.45; }  // mid: ~10% hard
+            else               { pEasy = 0.30; pMed = 0.52; }  // late: ~18% hard
+            const r = Math.random();
+            if (r < pEasy && EASY_PIECES.length) return randFrom(EASY_PIECES);
+            if (r < pEasy + pMed && MEDIUM_PIECES.length) return randFrom(MEDIUM_PIECES);
+            if (HARD_PIECES.length) return randFrom(HARD_PIECES);
+            return randFrom(MEDIUM_PIECES.length ? MEDIUM_PIECES : EASY_PIECES);
+        }
+
         // Preview state for hover
         let preview = null; // { startRow, startCol, valid, piece }
 
@@ -1250,14 +1287,7 @@
 
         function fillQueue() {
             while (queue.length < QUEUE_SIZE) {
-                let piece;
-                // 5% chance for a rare big piece (makes them feel special and "wow")
-                if (rarePieces.length > 0 && Math.random() < 0.05) {
-                    piece = rarePieces[Math.floor(Math.random() * rarePieces.length)];
-                } else {
-                    piece = commonPieces[Math.floor(Math.random() * commonPieces.length)];
-                }
-                queue.push(piece);
+                queue.push(pickNextPiece());
             }
             // Check if the new queue makes the game unplayable
             if (typeof checkGameOver === 'function') checkGameOver();
