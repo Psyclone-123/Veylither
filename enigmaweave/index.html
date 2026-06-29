@@ -934,6 +934,7 @@
             },
             {
                 id: 'gold', name: 'GOLD RUSH',
+                sfx: 'goldrush',
                 litCell: '#fff4d6', unlitCell: '#1f1404',
                 litGlow: '#ffd54a', unlitGlow: '#a9762a',
                 accent: '#ffc233', accent2: '#ffe9a8',
@@ -1160,21 +1161,46 @@
             else startMusic();
         };
 
-        // --- Zombie SFX ---
+        // --- Sound effects (per-skin) ---
+        // The default set (zombie) is used by every skin. A skin can override it
+        // by setting `sfx: '<key>'` in its theme (see SFX_SETS). Each set has two
+        // "place" clips (alternated + pitch-shifted), a hold clip, and a clear clip.
+        function makeSfxSet(place1, place2, hold, clear, vol) {
+            const set = {
+                place: [new Audio(place1), new Audio(place2)],
+                hold: new Audio(hold),
+                clear: new Audio(clear),
+                idx: 0
+            };
+            set.place.forEach(a => { a.volume = vol; });
+            set.hold.volume = vol;
+            set.clear.volume = Math.min(1, vol + 0.1);
+            return set;
+        }
+
+        const SFX_SETS = {
+            default: makeSfxSet(
+                'Zombiesfx/zombie_blockplace1.wav', 'Zombiesfx/zombie_blockplace2.wav',
+                'Zombiesfx/zombie_hold.wav', 'Zombiesfx/zombie_clear.mp3', 0.75),
+            goldrush: makeSfxSet(
+                'Goldrushsfx/goldrush_placeblock1.wav', 'Goldrushsfx/goldrush_placeblock2.wav',
+                'Goldrushsfx/goldrush_hold.wav', 'Goldrushsfx/goldrush_clear.wav', 0.75)
+        };
+
+        // Active set follows the current skin; unknown/absent keys use default.
+        function currentSfx() {
+            return SFX_SETS[theme().sfx] || SFX_SETS.default;
+        }
+
         // PLAY-button stinger: still silent (no file yet).
         function playTransitionSound() {}
 
-        // Block placement: alternate between two zombie clips, each played at a
-        // small random pitch so repeated placements don't feel repetitive.
-        const blockPlaceSfx = [
-            new Audio('Zombiesfx/zombie_blockplace1.wav'),
-            new Audio('Zombiesfx/zombie_blockplace2.wav')
-        ];
-        blockPlaceSfx.forEach(a => { a.volume = 0.75; });
-        let blockPlaceIdx = 0;
+        // Block placement: alternate the set's two clips, each at a small random
+        // pitch so repeated placements don't feel repetitive.
         function playPlaceSound() {
-            const a = blockPlaceSfx[blockPlaceIdx];
-            blockPlaceIdx = (blockPlaceIdx + 1) % blockPlaceSfx.length;
+            const set = currentSfx();
+            const a = set.place[set.idx];
+            set.idx = (set.idx + 1) % set.place.length;
             try {
                 // preservesPitch=false makes playbackRate shift the pitch too.
                 a.preservesPitch = false;
@@ -1187,24 +1213,20 @@
             } catch (e) {}
         }
 
-        // Hold a piece.
-        const holdSfx = new Audio('Zombiesfx/zombie_hold.wav');
-        holdSfx.volume = 0.75;
         function playHoldSound() {
+            const a = currentSfx().hold;
             try {
-                holdSfx.currentTime = 0;
-                const p = holdSfx.play();
+                a.currentTime = 0;
+                const p = a.play();
                 if (p && p.catch) p.catch(() => {});
             } catch (e) {}
         }
 
-        // Board cleared (black/white-out).
-        const clearSfx = new Audio('Zombiesfx/zombie_clear.mp3');
-        clearSfx.volume = 0.85;
         function playClearSound() {
+            const a = currentSfx().clear;
             try {
-                clearSfx.currentTime = 0;
-                const p = clearSfx.play();
+                a.currentTime = 0;
+                const p = a.play();
                 if (p && p.catch) p.catch(() => {});
             } catch (e) {}
         }
