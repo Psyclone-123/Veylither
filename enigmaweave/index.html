@@ -720,10 +720,6 @@
                     <span class="credit-role">Developer</span>
                     <span class="credit-name">Veylither</span>
                 </div>
-                <div class="credit-row">
-                    <span class="credit-role">Sound Effects</span>
-                    <span class="credit-name"><a href="https://uppbeat.com" target="_blank" rel="noopener">Uppbeat.com</a></span>
-                </div>
             </div>
             <div class="credit-copyright">&copy; 2026 EnigmaWeave. All rights reserved.</div>
             <button class="home-btn back-btn" onclick="showHome()">← BACK</button>
@@ -1164,28 +1160,51 @@
             else startMusic();
         };
 
-        // One-shot "transition" stinger played when the player presses PLAY.
-        const playTransitionSfx = new Audio('Uppbeat/puzzle-game-gentle-transition-betacut-1-00-02.mp3');
-        playTransitionSfx.volume = 0.6;
-        function playTransitionSound() {
+        // --- Zombie SFX ---
+        // PLAY-button stinger: still silent (no file yet).
+        function playTransitionSound() {}
+
+        // Block placement: alternate between two zombie clips, each played at a
+        // small random pitch so repeated placements don't feel repetitive.
+        const blockPlaceSfx = [
+            new Audio('Zombiesfx/zombie_blockplace1.wav'),
+            new Audio('Zombiesfx/zombie_blockplace2.wav')
+        ];
+        blockPlaceSfx.forEach(a => { a.volume = 0.75; });
+        let blockPlaceIdx = 0;
+        function playPlaceSound() {
+            const a = blockPlaceSfx[blockPlaceIdx];
+            blockPlaceIdx = (blockPlaceIdx + 1) % blockPlaceSfx.length;
             try {
-                playTransitionSfx.currentTime = 0;
-                const p = playTransitionSfx.play();
+                // preservesPitch=false makes playbackRate shift the pitch too.
+                a.preservesPitch = false;
+                a.mozPreservesPitch = false;
+                a.webkitPreservesPitch = false;
+                a.playbackRate = 0.92 + Math.random() * 0.16; // ~0.92x–1.08x pitch
+                a.currentTime = 0;
+                const p = a.play();
                 if (p && p.catch) p.catch(() => {});
             } catch (e) {}
         }
 
-        // One-shot "place"/"hold" SFX. Each skin can pick its own sound: the
-        // default is the typing click; the kawaii skin uses the uwu voice clip.
-        const placeSfx = new Audio('soul_serenity_sounds-typing-sound-01-229863.mp3');
-        placeSfx.volume = 0.7;
-        const kawaiiSfx = new Audio('Uppbeat/uwu-kawaii-female-voice-roys-noise-willows-kawaii-uwu-sound-2-1-0m01s.mp3');
-        kawaiiSfx.volume = 0.7;
-        function playPlaceSound() {
-            const sfx = (theme().sfx === 'kawaii') ? kawaiiSfx : placeSfx;
+        // Hold a piece.
+        const holdSfx = new Audio('Zombiesfx/zombie_hold.wav');
+        holdSfx.volume = 0.75;
+        function playHoldSound() {
             try {
-                sfx.currentTime = 0;
-                const p = sfx.play();
+                holdSfx.currentTime = 0;
+                const p = holdSfx.play();
+                if (p && p.catch) p.catch(() => {});
+            } catch (e) {}
+        }
+
+        // Board cleared (black/white-out).
+        const clearSfx = new Audio('Zombiesfx/zombie_clear.mp3');
+        clearSfx.volume = 0.85;
+        function playClearSound() {
+            try {
+                clearSfx.currentTime = 0;
+                const p = clearSfx.play();
                 if (p && p.catch) p.catch(() => {});
             } catch (e) {}
         }
@@ -1428,7 +1447,7 @@
                 injectFluid(cx, cy, 1.0, 0.95, 0.6, 420, 7, 0, 0);
                 injectFluid(cx - 40, cy - 30, 0.4, 1.0, 0.95, 280, 5, -8, -6);
 
-                playSound('clear');
+                playClearSound();
                 haptic(HAPTICS.clear);
 
                 // Board stays cleared — no scramble. Play continues on the solid
@@ -1522,7 +1541,7 @@
             }
 
             preview = null;
-            playPlaceSound();
+            playHoldSound();
             haptic(HAPTICS.hold);
             checkGameOver();
         }
