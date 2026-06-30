@@ -619,6 +619,33 @@
             font-size: 0.8rem;
             letter-spacing: 2px;
         }
+
+        /* ===== POP-UP (clears / tough placements) ===== */
+        #popup {
+            position: absolute;
+            top: 40%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0.6);
+            z-index: 7;
+            pointer-events: none;
+            color: #fff;
+            font-family: inherit;
+            font-weight: 900;
+            font-size: clamp(1.7rem, 6vw, 3.1rem);
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            text-align: center;
+            max-width: 90vw;
+            opacity: 0;
+        }
+        #popup.show { animation: popupPop 1.5s ease-out forwards; }
+        @keyframes popupPop {
+            0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+            12%  { opacity: 1; transform: translate(-50%, -50%) scale(1.18); }
+            26%  { transform: translate(-50%, -50%) scale(1.0); }
+            72%  { opacity: 1; transform: translate(-50%, -54%) scale(1.0); }
+            100% { opacity: 0; transform: translate(-50%, -72%) scale(0.95); }
+        }
     </style>
 </head>
 <body>
@@ -633,6 +660,7 @@
     </div>
 
     <div id="message"></div>
+    <div id="popup"></div>
 
     <div id="game-over">
         <h2 class="neon-text">GAME OVER</h2>
@@ -951,6 +979,7 @@
             },
             {
                 id: 'ember', name: 'EMBER',
+                sfx: 'ember',
                 litCell: '#ffe1d0', unlitCell: '#200a05',
                 litGlow: '#ff8a4c', unlitGlow: '#c2451f',
                 accent: '#ff6a2b', accent2: '#ffd1a3',
@@ -1168,12 +1197,12 @@
         function makeSfxSet(place1, place2, hold, clear, vol) {
             const set = {
                 place: [new Audio(place1), new Audio(place2)],
-                hold: new Audio(hold),
+                hold: hold ? new Audio(hold) : null, // null -> falls back to default hold
                 clear: new Audio(clear),
                 idx: 0
             };
             set.place.forEach(a => { a.volume = vol; });
-            set.hold.volume = vol;
+            if (set.hold) set.hold.volume = vol;
             set.clear.volume = Math.min(1, vol + 0.1);
             return set;
         }
@@ -1184,7 +1213,12 @@
                 'Zombiesfx/zombie_hold.wav', 'Zombiesfx/zombie_clear.mp3', 0.75),
             goldrush: makeSfxSet(
                 'Goldrushsfx/goldrush_placeblock1.wav', 'Goldrushsfx/goldrush_placeblock2.wav',
-                'Goldrushsfx/goldrush_hold.wav', 'Goldrushsfx/goldrush_clear.wav', 0.75)
+                'Goldrushsfx/goldrush_hold.wav', 'Goldrushsfx/goldrush_clear.wav', 0.75),
+            // Ember: lighter open/close on place, ember_hold on hold, Ember_clear
+            // on clear.
+            ember: makeSfxSet(
+                'ember/lighter_open.wav', 'ember/lighter_close.wav',
+                'ember/ember_hold.wav', 'ember/Ember_clear.wav', 0.8)
         };
 
         // Active set follows the current skin; unknown/absent keys use default.
@@ -1214,7 +1248,7 @@
         }
 
         function playHoldSound() {
-            const a = currentSfx().hold;
+            const a = currentSfx().hold || SFX_SETS.default.hold;
             try {
                 a.currentTime = 0;
                 const p = a.play();
@@ -1314,6 +1348,8 @@
             queue = [];
 
             preview = null;
+            flameParticles = [];
+            flood = null;
 
             fillQueue();
             clearMessage();
@@ -1338,6 +1374,22 @@
             const el = document.getElementById('message');
             el.innerText = msg;
             setTimeout(() => { if (el.innerText === msg) el.innerText = ''; }, 2200);
+        }
+
+        // Big themed pop-up (clears + tough placements). Glows in the active
+        // skin's colour so it matches the skin styling.
+        let popupTimer = null;
+        function showPopup(text, color) {
+            const el = document.getElementById('popup');
+            if (!el) return;
+            const c = color || theme().accent;
+            el.textContent = text;
+            el.style.textShadow = `0 0 8px ${c}, 0 0 20px ${c}, 0 0 38px ${c}`;
+            el.classList.remove('show');
+            void el.offsetWidth;        // reflow to restart the CSS animation
+            el.classList.add('show');
+            clearTimeout(popupTimer);
+            popupTimer = setTimeout(() => { el.classList.remove('show'); }, 1500);
         }
 
         function clearMessage() {
@@ -1437,6 +1489,12 @@
             fillQueue();
             canHold = true;
             preview = null;
+            // Pop-up for landing a chunky/awkward piece. If this placement also
+            // clears the board, the clear pop-up overrides it.
+            if (pieceCellCount(piece) >= 5 || pieceSpan(piece) >= 5) {
+                const praise = ['TOUGH FIT!', 'MASTERFUL!', 'BIG PLAY!', 'CLEAN!'];
+                showPopup(praise[Math.floor(Math.random() * praise.length)], theme().accent);
+            }
             checkWinCondition();
             setTimeout(checkGameOver, 50);
         }
@@ -1457,11 +1515,12 @@
             if (sum === 0 || sum === BOARD_SIZE * BOARD_SIZE) {
                 score += 1000 * multiplier;
 
-                // Score-based multiplier (increases with total score)
-                multiplier = Math.min(8, 1 + Math.floor(score / 800));
+                // Score-based multiplier — uncapped, so it keeps climbing the
+                // longer the player keeps solving.
+                multiplier = 1 + Math.floor(score / 800);
 
                 let msg = (sum === 0) ? "BLACKED OUT!" : "WHITED OUT!";
-                showMessage(`${msg}  ${multiplier}x`);
+                showPopup(`${msg}  ${multiplier}x`, theme().valid);
 
                 // Big fluid burst
                 const cx = boardX + boardPixelSize * 0.5;
@@ -1471,6 +1530,10 @@
 
                 playClearSound();
                 haptic(HAPTICS.clear);
+                const skin = theme().id;
+                if (skin === 'ember') emberFlameBurst();
+                else if (skin === 'toxic') startFlood(FLOOD_TOXIC);
+                else if (skin === 'gold') startFlood(FLOOD_BEER);
 
                 // Board stays cleared — no scramble. Play continues on the solid
                 // board (any piece fits), and the next placement starts inverting
@@ -2132,6 +2195,145 @@
         const imgData = offCtx.createImageData(N, N);
         const data = imgData.data;
 
+        // --- Ember flame burst (only triggered on the Ember skin, on a clear) ---
+        // A wave of fire particles rises from the board and engulfs it, then
+        // burns out. No other skin ever spawns these.
+        let flameParticles = [];
+        function emberFlameBurst() {
+            const left = boardX, width = boardPixelSize;
+            const baseY = boardY + boardPixelSize;
+            for (let i = 0; i < 95; i++) {
+                flameParticles.push({
+                    x: left + Math.random() * width,
+                    y: baseY - Math.random() * boardPixelSize * 0.35,
+                    vx: (Math.random() - 0.5) * 2,
+                    vy: -(3 + Math.random() * 6),          // rise
+                    life: 1,
+                    decay: 0.010 + Math.random() * 0.018,
+                    size: boardPixelSize * (0.05 + Math.random() * 0.08),
+                    hue: 8 + Math.random() * 38            // deep red -> orange -> gold
+                });
+            }
+        }
+        function updateFlames() {
+            if (!flameParticles.length) return;
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';      // additive glow
+            for (let i = flameParticles.length - 1; i >= 0; i--) {
+                const p = flameParticles[i];
+                p.x += p.vx; p.y += p.vy;
+                p.vy *= 0.985; p.vx *= 0.97;
+                p.life -= p.decay;
+                if (p.life <= 0) { flameParticles.splice(i, 1); continue; }
+                const r = p.size * (1.4 - p.life * 0.6);   // grow as it fades
+                const a = p.life * 0.7;
+                const grd = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
+                grd.addColorStop(0, `hsla(${p.hue + 22}, 100%, ${60 + p.life * 18}%, ${a})`);
+                grd.addColorStop(1, `hsla(${p.hue}, 100%, 45%, 0)`);
+                ctx.fillStyle = grd;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+        }
+
+        // --- Board flood (Toxic = sludge, Gold Rush = beer overflow) ---
+        // Liquid rises to fill the board on a clear, holds, then fades. Each skin
+        // passes its own colours; skins without a flood config never start one.
+        const FLOOD_TOXIC = {
+            bottom: 'rgba(35, 80, 8, 0.88)',
+            top:    'rgba(120, 230, 40, 0.70)',
+            foam:   null,
+            bubble: 'rgba(190, 255, 90, 0.55)'
+        };
+        const FLOOD_BEER = {
+            bottom: 'rgba(150, 78, 6, 0.88)',
+            top:    'rgba(245, 185, 45, 0.80)',
+            foam:   'rgba(255, 250, 232, 0.92)',
+            bubble: 'rgba(255, 240, 205, 0.6)'
+        };
+        let flood = null;
+        function startFlood(cfg) {
+            flood = { cfg: cfg, t: 0, bubbles: [] };
+            for (let i = 0; i < 28; i++) {
+                flood.bubbles.push({
+                    x: boardX + Math.random() * boardPixelSize,
+                    yoff: Math.random(),
+                    r: boardPixelSize * (0.008 + Math.random() * 0.022),
+                    speed: 0.3 + Math.random() * 0.8,
+                    phase: Math.random() * Math.PI * 2
+                });
+            }
+        }
+        function updateFlood() {
+            if (!flood) return;
+            flood.t += 1 / 60;
+            const T = flood.t;
+            let level, alpha = 1;
+            if (T < 0.5)      level = T / 0.5;            // rise
+            else if (T < 2.0) level = 1;                  // hold full
+            else if (T < 2.8) { level = 1; alpha = 1 - (T - 2.0) / 0.8; } // fade
+            else { flood = null; return; }
+
+            const bx = boardX, bw = boardPixelSize;
+            const bottom = boardY + boardPixelSize;
+            const fillH = level * boardPixelSize;
+            const surfaceY = bottom - fillH;
+            const cfg = flood.cfg;
+            const amp = bw * 0.014;
+
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            ctx.beginPath();
+            ctx.rect(bx, boardY, bw, boardPixelSize);
+            ctx.clip();
+
+            // liquid body with a wavy top surface
+            const grd = ctx.createLinearGradient(0, bottom, 0, surfaceY - 1);
+            grd.addColorStop(0, cfg.bottom);
+            grd.addColorStop(1, cfg.top);
+            ctx.fillStyle = grd;
+            ctx.beginPath();
+            ctx.moveTo(bx, bottom);
+            ctx.lineTo(bx, surfaceY);
+            const waves = 8;
+            for (let i = 0; i <= waves; i++) {
+                ctx.lineTo(bx + bw * i / waves, surfaceY + Math.sin(T * 4 + i * 1.1) * amp);
+            }
+            ctx.lineTo(bx + bw, bottom);
+            ctx.closePath();
+            ctx.fill();
+
+            // rising bubbles
+            ctx.fillStyle = cfg.bubble;
+            for (const b of flood.bubbles) {
+                b.yoff += b.speed / 120;
+                if (b.yoff > 1) b.yoff -= 1;
+                const by = bottom - b.yoff * fillH;
+                if (by < surfaceY + b.r) continue;
+                ctx.beginPath();
+                ctx.arc(b.x + Math.sin(T * 3 + b.phase) * bw * 0.01, by, b.r, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // foam head at the surface (beer)
+            if (cfg.foam && level > 0.03) {
+                ctx.fillStyle = cfg.foam;
+                const fn = 22;
+                for (let i = 0; i <= fn; i++) {
+                    const x = bx + bw * i / fn;
+                    const y = surfaceY + Math.sin(T * 4 + i * 0.5) * amp;
+                    const r = bw * (0.014 + 0.012 * Math.abs(Math.sin(i * 1.7 + T * 2)));
+                    ctx.beginPath();
+                    ctx.arc(x, y, r, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            ctx.restore();
+        }
+
         function render() {
             stepPhysics(0.095);
 
@@ -2164,6 +2366,8 @@
             drawBoard();
             drawSideUI();
             drawLabels();
+            updateFlames();
+            updateFlood();
 
             requestAnimationFrame(render);
         }
