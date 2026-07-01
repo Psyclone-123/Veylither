@@ -27,7 +27,7 @@
             height: 100vh;
             z-index: 1;
             image-rendering: auto; 
-            opacity: 0.55;
+            opacity: 0.82;
             mix-blend-mode: screen;
         }
 
@@ -971,6 +971,7 @@
             },
             {
                 id: 'jade', name: 'JADE',
+                sfx: 'jade',
                 litCell: '#dffff2', unlitCell: '#04201a',
                 litGlow: '#7dffcf', unlitGlow: '#2fad86',
                 accent: '#3fe0a8', accent2: '#aef7dd',
@@ -1218,7 +1219,12 @@
             // on clear.
             ember: makeSfxSet(
                 'ember/lighter_open.wav', 'ember/lighter_close.wav',
-                'ember/ember_hold.wav', 'ember/Ember_clear.wav', 0.8)
+                'ember/ember_hold.wav', 'ember/Ember_clear.wav', 0.8),
+            // Jade: one place clip reused for both slots (the pitch shift keeps
+            // it from feeling repetitive), plus hold and clear.
+            jade: makeSfxSet(
+                'Jade/jade_place.wav', 'Jade/jade_place.wav',
+                'Jade/jade_hold.wav', 'Jade/jade_clear.wav', 0.75)
         };
 
         // Active set follows the current skin; unknown/absent keys use default.
@@ -1350,6 +1356,7 @@
             preview = null;
             flameParticles = [];
             flood = null;
+            crystals = null;
 
             fillQueue();
             clearMessage();
@@ -1463,13 +1470,10 @@
             }
             playPlaceSound();
             haptic(HAPTICS.place);
-            // Erupt the fluid simulation from every cell of the placed piece,
-            // tinted to the active skin — placing a block "plays" the sim.
-            const pWidth = piece[0] ? piece[0].length : 1;
-            const centerX = boardX + (startCol + pWidth / 2) * cellSize;
-            const centerY = boardY + (startRow + piece.length / 2) * cellSize;
-            const splashA = hexToRgb(theme().accent);
-            const splashB = hexToRgb(theme().accent2);
+            // Vaporize the placed piece into the fluid sim: every filled cell
+            // releases a puff of skin-tinted vapour that rises and dissipates.
+            const vapA = hexToRgb(theme().accent);
+            const vapB = hexToRgb(theme().accent2);
             for (let pr = 0; pr < piece.length; pr++) {
                 for (let pc = 0; pc < piece[pr].length; pc++) {
                     if (piece[pr][pc] !== 1) continue;
@@ -1477,11 +1481,10 @@
                     if (sr < 0 || sr >= BOARD_SIZE || sc < 0 || sc >= BOARD_SIZE) continue;
                     const px = boardX + (sc + 0.5) * cellSize;
                     const py = boardY + (sr + 0.5) * cellSize;
-                    const col = Math.random() < 0.5 ? splashA : splashB;
-                    // Push colour outward from the piece centre for a splash burst.
-                    const vx = (px - centerX) * 0.06 + (Math.random() - 0.5) * 4;
-                    const vy = (py - centerY) * 0.06 + (Math.random() - 0.5) * 4;
-                    injectFluid(px, py, col.r / 255, col.g / 255, col.b / 255, 240, 7, vx, vy);
+                    const col = Math.random() < 0.5 ? vapA : vapB;
+                    const vx = (Math.random() - 0.5) * 5;        // drifting wisps
+                    const vy = -(7 + Math.random() * 7);          // strong rise = vaporize
+                    injectFluid(px, py, col.r / 255, col.g / 255, col.b / 255, 550, 12, vx, vy);
                 }
             }
             score += (blocksPlaced * 10) * multiplier;
@@ -1534,6 +1537,7 @@
                 if (skin === 'ember') emberFlameBurst();
                 else if (skin === 'toxic') startFlood(FLOOD_TOXIC);
                 else if (skin === 'gold') startFlood(FLOOD_BEER);
+                else if (skin === 'jade') startCrystalize();
 
                 // Board stays cleared — no scramble. Play continues on the solid
                 // board (any piece fits), and the next placement starts inverting
@@ -2334,6 +2338,64 @@
             ctx.restore();
         }
 
+        // --- Jade crystalize (only on the Jade skin, on a clear) ---
+        // Crystal shards grow across the board in a staggered sweep, glint, then
+        // fade. No other skin starts this.
+        let crystals = null;
+        function startCrystalize() {
+            crystals = { t: 0, shards: [] };
+            for (let i = 0; i < 30; i++) {
+                crystals.shards.push({
+                    x: boardX + Math.random() * boardPixelSize,
+                    y: boardY + Math.random() * boardPixelSize,
+                    size: boardPixelSize * (0.06 + Math.random() * 0.10),
+                    rot: Math.random() * Math.PI * 2,
+                    delay: Math.random() * 0.6,           // staggered formation
+                    hue: 140 + Math.random() * 45         // green -> teal
+                });
+            }
+        }
+        function updateCrystals() {
+            if (!crystals) return;
+            crystals.t += 1 / 60;
+            const T = crystals.t;
+            if (T > 2.2) { crystals = null; return; }
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(boardX, boardY, boardPixelSize, boardPixelSize);
+            ctx.clip();
+            ctx.globalCompositeOperation = 'lighter';      // luminous crystal glow
+            for (const s of crystals.shards) {
+                const local = T - s.delay;
+                if (local < 0) continue;
+                const grow = Math.min(1, local / 0.28);
+                let fade = 1;
+                if (T > 1.5) fade = Math.max(0, 1 - (T - 1.5) / 0.7);
+                if (fade <= 0) continue;
+                const sz = s.size * grow;
+                ctx.save();
+                ctx.translate(s.x, s.y);
+                ctx.rotate(s.rot);
+                ctx.globalAlpha = fade;
+                const grd = ctx.createLinearGradient(0, -sz, 0, sz * 0.55);
+                grd.addColorStop(0, `hsla(${s.hue}, 80%, 78%, 0.9)`);
+                grd.addColorStop(1, `hsla(${s.hue}, 70%, 35%, 0.12)`);
+                ctx.fillStyle = grd;
+                ctx.beginPath();
+                ctx.moveTo(0, -sz);                        // elongated diamond shard
+                ctx.lineTo(sz * 0.42, 0);
+                ctx.lineTo(0, sz * 0.55);
+                ctx.lineTo(-sz * 0.42, 0);
+                ctx.closePath();
+                ctx.fill();
+                ctx.strokeStyle = `hsla(${s.hue + 12}, 95%, 88%, ${fade})`;
+                ctx.lineWidth = 1.4;
+                ctx.stroke();
+                ctx.restore();
+            }
+            ctx.restore();
+        }
+
         function render() {
             stepPhysics(0.095);
 
@@ -2368,6 +2430,7 @@
             drawLabels();
             updateFlames();
             updateFlood();
+            updateCrystals();
 
             requestAnimationFrame(render);
         }
