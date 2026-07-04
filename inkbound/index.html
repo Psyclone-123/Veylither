@@ -1,0 +1,1511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Inkbound — an auto battler</title>
+<style>
+  :root{
+    --paper:#EDE4CE;
+    --paper-hi:#F5EEDC;
+    --ink:#211B14;
+    --sepia:#8A7357;
+    --blood:#7E2A1C;
+    --gold:#8A6A1F;
+    --shadow:rgba(33,27,20,.25);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{
+    background:var(--paper);
+    background-image:
+      radial-gradient(ellipse at 20% 10%, rgba(138,115,87,.10), transparent 55%),
+      radial-gradient(ellipse at 85% 90%, rgba(138,115,87,.12), transparent 50%),
+      repeating-linear-gradient(93deg, transparent 0 7px, rgba(33,27,20,.016) 7px 8px);
+    color:var(--ink);
+    font-family:Georgia,'Iowan Old Style','Times New Roman',serif;
+    overflow-x:hidden;
+    user-select:none;
+  }
+  #app{max-width:760px;margin:0 auto;padding:8px 8px 90px}
+
+  /* ---------- ledger bar ---------- */
+  .ledger{
+    display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:4px 12px;
+    border-bottom:2px solid var(--ink);
+    padding:4px 2px 6px;position:relative;
+  }
+  .ledger::after{content:"";position:absolute;left:0;right:0;bottom:-5px;border-bottom:1px solid var(--ink)}
+  .title{font-size:20px;letter-spacing:1px}
+  .title em{font-style:italic;font-size:12px;color:var(--sepia);letter-spacing:0}
+  .stats{display:flex;gap:14px;font-size:14px}
+  .stat b{font-size:17px}
+  .stat .lbl{font-variant:small-caps;letter-spacing:1px;color:var(--sepia);font-size:11px}
+  .gold b{color:var(--gold)} .hp b{color:var(--blood)}
+
+  /* ---------- opponents strip ---------- */
+  #ghosts{display:flex;gap:6px;margin:10px 0 2px;overflow-x:auto;padding-bottom:4px}
+  .ghost{
+    min-width:74px;border:1px solid var(--ink);padding:4px 6px;background:var(--paper-hi);
+    box-shadow:2px 2px 0 var(--shadow);font-size:11px;text-align:center;position:relative;
+  }
+  .ghost .gname{font-variant:small-caps;letter-spacing:.5px;white-space:nowrap}
+  .ghost .ghp{color:var(--blood);font-size:13px}
+  .ghost.dead{opacity:.35}
+  .ghost.dead::after{content:"✕";position:absolute;inset:0;display:grid;place-items:center;font-size:26px;color:var(--blood)}
+  .ghost.foe{outline:2px solid var(--blood);outline-offset:1px}
+  .ghost.foe::before{content:"next foe";position:absolute;top:-9px;left:50%;transform:translateX(-50%);
+    background:var(--blood);color:var(--paper-hi);font-size:8px;padding:0 5px;font-variant:small-caps;letter-spacing:1px;white-space:nowrap}
+
+  /* ---------- section rules ---------- */
+  .rulehead{
+    display:flex;align-items:center;gap:10px;margin:12px 0 6px;
+    font-variant:small-caps;letter-spacing:2px;font-size:12px;color:var(--sepia);
+  }
+  .rulehead::before,.rulehead::after{content:"";flex:1;border-top:1px solid var(--sepia);opacity:.6}
+
+  /* ---------- board & shop rows ---------- */
+  .row{display:flex;justify-content:center;gap:5px;min-height:96px;align-items:center;flex-wrap:nowrap}
+  .slot{
+    width:13%;max-width:86px;aspect-ratio:3/4;border:1px dashed rgba(138,115,87,.55);
+    display:grid;place-items:center;color:rgba(138,115,87,.5);font-size:18px;
+  }
+
+  /* ---------- cards ---------- */
+  .card{
+    width:13%;max-width:86px;aspect-ratio:3/4;position:relative;cursor:pointer;
+    background:var(--paper-hi);
+    border:1.5px solid var(--ink);
+    box-shadow:2px 3px 0 var(--shadow), inset 0 0 0 3px var(--paper-hi), inset 0 0 0 4px rgba(33,27,20,.55);
+    padding:4px 3px 3px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;
+    transition:transform .12s ease;
+  }
+  .card:nth-child(odd){transform:rotate(-1.1deg)} .card:nth-child(even){transform:rotate(.9deg)}
+  .card.sel{transform:translateY(-8px) rotate(0deg)!important;box-shadow:3px 6px 0 var(--shadow), inset 0 0 0 3px var(--paper-hi), inset 0 0 0 4px var(--ink);outline:2px solid var(--ink)}
+  .card .tier{position:absolute;top:1px;left:3px;font-size:9px;color:var(--sepia);font-style:italic}
+  .card .glyph{font-size:clamp(18px,5.5vw,30px);line-height:1;filter:grayscale(1) contrast(1.4);margin-top:6px}
+  .card .cname{font-size:clamp(7px,2.1vw,10px);text-align:center;line-height:1.05;font-variant:small-caps;letter-spacing:.3px}
+  .card .kw{font-size:clamp(6px,1.8vw,8px);color:var(--sepia);font-style:italic;text-align:center;line-height:1;min-height:8px}
+  .card .trigline{font-size:clamp(6px,1.7vw,7.5px);color:#3B3A60;font-style:italic;text-align:center;line-height:1.05;padding:0 1px}
+  .card .statline{display:flex;justify-content:space-between;width:100%;font-size:clamp(10px,3vw,15px);padding:0 3px}
+  .card .atk::before{content:"⚔ ";font-size:.7em}
+  .card .hp{color:var(--blood)} .card .hp::before{content:"♥ ";font-size:.7em}
+  .card .cost{position:absolute;top:1px;right:3px;font-size:10px;color:var(--gold);font-weight:bold}
+  .card.warded::after{content:"";position:absolute;inset:2px;border:1.5px dotted var(--ink);border-radius:50%;pointer-events:none;opacity:.7}
+  .card.frozencard{outline:2px dotted #3d5a80;outline-offset:2px}
+  .card.golden{
+    border-color:var(--gold);
+    background:linear-gradient(160deg,#F7EFD8,#EFDFB2);
+    box-shadow:2px 3px 0 var(--shadow), inset 0 0 0 3px #F7EFD8, inset 0 0 0 4px var(--gold);
+  }
+  .card.golden .cname,.card.golden .tier{color:var(--gold)}
+  .card.spellcard{
+    background:linear-gradient(165deg,#E6E3D8,#D8D6CC);
+    box-shadow:2px 3px 0 var(--shadow), inset 0 0 0 3px #E6E3D8, inset 0 0 0 4px #3B3A60;
+    border-color:#3B3A60;
+  }
+  .card.spellcard .cname{color:#3B3A60}
+  .card .sdesc{font-size:clamp(6px,1.9vw,8.5px);font-style:italic;text-align:center;line-height:1.15;color:var(--sepia);padding:0 2px 2px}
+  .card.spelltarget{outline:2px solid #3B3A60;outline-offset:2px;transform:translateY(-5px) rotate(0deg)!important}
+  .vdivider{width:0;border-left:2px dashed var(--sepia);align-self:stretch;margin:10px 3px;opacity:.55}
+  .card.ghosted{opacity:.25}
+
+  /* ---------- drag & drop ---------- */
+  .dragclone{
+    position:fixed;z-index:120;pointer-events:none;margin:0;
+    transition:none!important;will-change:transform,left,top;
+    box-shadow:6px 10px 14px rgba(33,27,20,.35), inset 0 0 0 3px var(--paper-hi), inset 0 0 0 4px var(--ink);
+  }
+  .row.dropready{outline:2px dashed var(--sepia);outline-offset:4px;background:rgba(138,115,87,.07)}
+  #inkwell{
+    position:fixed;bottom:66px;left:50%;transform:translateX(-50%);z-index:30;
+    border:2px dashed var(--blood);color:var(--blood);background:var(--paper);
+    padding:10px 18px;font-variant:small-caps;letter-spacing:1px;font-size:13px;
+    box-shadow:2px 3px 0 var(--shadow);white-space:nowrap;
+  }
+  #inkwell.hot{background:rgba(126,42,28,.15);outline:3px solid var(--blood);outline-offset:2px}
+  .splat{position:fixed;z-index:110;pointer-events:none;transform:translate(-50%,-50%)}
+  .splat svg{overflow:visible;display:block}
+  .splat ellipse{animation:splatpop .55s cubic-bezier(.2,.8,.3,1) forwards;transform-box:fill-box;transform-origin:center;opacity:.92}
+  @keyframes splatpop{0%{scale:0}55%{scale:1.2}100%{scale:1;opacity:0}}
+
+  /* combat animation states */
+  .card.attacking{transform:translateY(var(--lunge,-14px)) scale(1.06) rotate(0deg)!important;z-index:5;transition:transform .16s ease-in}
+  .card.hit{animation:shake .3s}
+  .card.dying{animation:splat .45s forwards}
+  @keyframes shake{0%,100%{translate:0 0}25%{translate:-4px 0}50%{translate:4px 0}75%{translate:-3px 0}}
+  @keyframes splat{
+    0%{filter:none;opacity:1}
+    40%{filter:contrast(2) brightness(.3)}
+    100%{transform:scale(.4) rotate(20deg);opacity:0;filter:contrast(3) brightness(0)}
+  }
+  .dmgfloat{
+    position:absolute;left:50%;top:30%;transform:translateX(-50%);
+    font-size:18px;font-weight:bold;color:var(--blood);pointer-events:none;z-index:9;
+    animation:floatup .8s forwards;text-shadow:0 0 4px var(--paper);
+  }
+  @keyframes floatup{from{opacity:1;translate:0 0}to{opacity:0;translate:0 -30px}}
+
+  /* ---------- actions ---------- */
+  #actions{
+    position:fixed;bottom:0;left:0;right:0;background:var(--paper);
+    border-top:2px solid var(--ink);padding:8px;display:flex;gap:6px;justify-content:center;flex-wrap:wrap;
+    box-shadow:0 -4px 12px rgba(33,27,20,.12);z-index:20;
+  }
+  button{
+    font-family:inherit;font-variant:small-caps;letter-spacing:1px;font-size:14px;
+    background:var(--paper-hi);color:var(--ink);border:1.5px solid var(--ink);
+    padding:8px 14px;cursor:pointer;box-shadow:2px 2px 0 var(--shadow);
+  }
+  button:active{translate:1px 1px;box-shadow:1px 1px 0 var(--shadow)}
+  button:disabled{opacity:.4;pointer-events:none}
+  button.primary{background:var(--ink);color:var(--paper-hi)}
+  button.danger{color:var(--blood);border-color:var(--blood)}
+  .costtag{color:var(--gold);font-size:11px}
+
+  /* ---------- overlays ---------- */
+  .overlay{
+    position:fixed;inset:0;background:rgba(33,27,20,.55);display:grid;place-items:center;z-index:50;
+  }
+  .scroll{
+    background:var(--paper-hi);border:2px solid var(--ink);box-shadow:6px 6px 0 var(--shadow);
+    padding:22px 26px;max-width:420px;width:88%;text-align:center;
+  }
+  .scroll h2{font-size:26px;letter-spacing:1px;margin-bottom:6px}
+  .scroll h2.win{color:var(--ink)} .scroll h2.loss{color:var(--blood)}
+  .scroll p{font-size:14px;color:var(--sepia);font-style:italic;margin-bottom:14px;line-height:1.4}
+  .hidden{display:none!important}
+
+  #log{font-size:12px;font-style:italic;color:var(--sepia);text-align:center;min-height:16px;margin-top:6px}
+
+  /* ---------- phase backgrounds ---------- */
+  .bglayer{position:fixed;inset:0;z-index:-1;opacity:0;transition:opacity .9s ease;pointer-events:none}
+  /* the coffee house: a room in three depth planes (far wall / mid floor & lamps / near table) with pointer parallax */
+  #bgShop{background:linear-gradient(180deg, rgba(176,141,62,.10), rgba(107,68,35,.03) 40%, rgba(107,68,35,.06))}
+  .pz{position:absolute;inset:-44px;background-repeat:no-repeat;will-change:transform;transition:transform .18s ease-out}
+  /* FAR: back wall, wainscot, menu board, shelf of cups — hazy with distance */
+  .pz.far{
+    filter:blur(.8px);
+    background-image:
+      linear-gradient(180deg, rgba(107,68,35,.11) 0 25%, rgba(107,68,35,.30) 25% calc(25% + 2px), transparent calc(25% + 2px)),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 120'%3E%3Cg stroke='%236B4423' stroke-opacity='.26' fill='none' stroke-width='3'%3E%3Crect x='8' y='8' width='144' height='104' rx='6'/%3E%3Cpath d='M24 34h70M24 52h96M24 70h60M24 88h84' stroke-width='2.5' stroke-opacity='.18'/%3E%3Cpath d='M116 28q12 7 0 15' stroke-width='2'/%3E%3C/g%3E%3C/svg%3E"),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 220 90'%3E%3Cg stroke='%236B4423' stroke-opacity='.24' fill='none' stroke-width='3'%3E%3Cpath d='M6 70h208'/%3E%3Cpath d='M28 70v-26h22v26M36 50h-8'/%3E%3Crect x='70' y='38' width='20' height='32' rx='3'/%3E%3Cpath d='M112 70v-22a10 10 0 0120 0v22'/%3E%3Crect x='150' y='30' width='24' height='40' rx='4'/%3E%3Cpath d='M174 40h8a8 8 0 010 16h-8' stroke-width='2.5'/%3E%3C/g%3E%3C/svg%3E");
+    background-position:0 0, left 6% top 34px, right 5% top 46px;
+    background-size:auto, 150px 113px, 200px 82px;
+  }
+  /* MID: pendant lamps with warm pools of light, perspective floorboards running to the horizon */
+  .pz.mid{
+    background-image:
+      radial-gradient(ellipse 190px 130px at 22% 16%, rgba(176,141,62,.17), transparent 70%),
+      radial-gradient(ellipse 190px 130px at 74% 13%, rgba(176,141,62,.15), transparent 70%),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 130'%3E%3Cg stroke='%236B4423' stroke-opacity='.30' fill='none' stroke-width='3'%3E%3Cpath d='M40 0v50'/%3E%3Cpath d='M18 84L40 50l22 34z' fill='%236B4423' fill-opacity='.07'/%3E%3Cpath d='M14 86h52'/%3E%3Ccircle cx='40' cy='95' r='5' fill='%23B08D3E' fill-opacity='.4' stroke='none'/%3E%3C/g%3E%3C/svg%3E"),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 130'%3E%3Cg stroke='%236B4423' stroke-opacity='.30' fill='none' stroke-width='3'%3E%3Cpath d='M40 0v50'/%3E%3Cpath d='M18 84L40 50l22 34z' fill='%236B4423' fill-opacity='.07'/%3E%3Cpath d='M14 86h52'/%3E%3Ccircle cx='40' cy='95' r='5' fill='%23B08D3E' fill-opacity='.4' stroke='none'/%3E%3C/g%3E%3C/svg%3E"),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 300' preserveAspectRatio='none'%3E%3Cg stroke='%236B4423' fill='none'%3E%3Cpath d='M400 -80L-90 300M400 -80L30 300M400 -80L150 300M400 -80L275 300M400 -80L400 300M400 -80L525 300M400 -80L650 300M400 -80L770 300M400 -80L890 300' stroke-opacity='.13' stroke-width='2'/%3E%3Cpath d='M0 62h800M0 112h800M0 176h800M0 248h800' stroke-opacity='.09' stroke-width='2'/%3E%3C/g%3E%3C/svg%3E");
+    background-position:0 0, 0 0, left 20% top 0, left 73% top 0, bottom center;
+    background-size:auto, auto, 62px 101px, 62px 101px, 100% 40%;
+  }
+  /* NEAR: table edge and a steaming cup in the foreground corner, ring stains on the tabletop — bold and sharp */
+  .pz.near{
+    background-image:
+      radial-gradient(circle at 68% 86%, rgba(107,68,35,0) 50px, rgba(107,68,35,.15) 53px, rgba(107,68,35,0) 59px),
+      radial-gradient(circle at 84% 92%, rgba(107,68,35,0) 30px, rgba(107,68,35,.12) 33px, rgba(107,68,35,0) 38px),
+      radial-gradient(circle at 8% 90%, rgba(107,68,35,0) 38px, rgba(107,68,35,.11) 41px, rgba(107,68,35,0) 46px),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 260 200'%3E%3Cg fill='none' stroke='%236B4423' stroke-opacity='.32' stroke-width='5' stroke-linecap='round'%3E%3Cpath d='M0 150q130-26 260-6'/%3E%3Cpath d='M150 96h64v30a17 17 0 01-17 17h-30a17 17 0 01-17-17z'/%3E%3Cpath d='M214 102h10a12 12 0 010 24h-10'/%3E%3Cpath d='M166 82q-7-9 0-19M186 84q-7-11 0-23M206 82q-7-9 0-19' stroke-width='4'/%3E%3C/g%3E%3C/svg%3E");
+    background-position:0 0,0 0,0 0, right -20px bottom -14px;
+    background-size:auto,auto,auto, 320px 246px;
+  }
+  /* the battlefield: cold vignette, red wash, crossed swords, slashing hatch */
+  #bgBattle{
+    background-image:
+      radial-gradient(ellipse at 50% 42%, transparent 52%, rgba(33,27,20,.26)),
+      radial-gradient(ellipse at 50% 12%, rgba(126,42,28,.12), transparent 55%),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3Cg fill='none' stroke='%23211B14' stroke-opacity='.15' stroke-width='4.5' stroke-linecap='round'%3E%3Cpath d='M42 34l112 112M158 34L46 146'/%3E%3Cpath d='M138 162l32-32M62 130l-24-24'/%3E%3Cpath d='M154 146l16 16M46 130l-14 14'/%3E%3Ccircle cx='176' cy='168' r='5'/%3E%3Ccircle cx='26' cy='150' r='5'/%3E%3C/g%3E%3Cg fill='%23211B14' fill-opacity='.10'%3E%3Cellipse cx='100' cy='100' rx='9' ry='7'/%3E%3Cellipse cx='120' cy='88' rx='4' ry='3'/%3E%3Cellipse cx='84' cy='114' rx='3' ry='4'/%3E%3C/g%3E%3C/svg%3E"),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Cg fill='%237E2A1C' fill-opacity='.10'%3E%3Cellipse cx='60' cy='60' rx='11' ry='8' transform='rotate(25 60 60)'/%3E%3Cellipse cx='84' cy='46' rx='4' ry='3'/%3E%3Cellipse cx='40' cy='78' rx='3' ry='5'/%3E%3Cellipse cx='76' cy='76' rx='2.5' ry='2'/%3E%3C/g%3E%3C/svg%3E"),
+      repeating-linear-gradient(115deg, transparent 0 9px, rgba(33,27,20,.045) 9px 10px);
+    background-repeat:no-repeat,no-repeat,no-repeat,no-repeat,repeat;
+    background-position:0 0, 0 0, right -30px top 46px, left 8px bottom 70px, 0 0;
+    background-size:auto,auto, 250px 250px, 130px 130px, auto;
+  }
+  body.phase-shop #bgShop{opacity:1}
+  body.phase-combat #bgBattle{opacity:1}
+  body.phase-combat .rulehead{color:var(--blood)}
+  body.phase-combat .rulehead::before,body.phase-combat .rulehead::after{border-top-color:var(--blood)}
+
+  /* ---------- card art ---------- */
+  .artbox{width:90%;height:42%;overflow:hidden;border:1px solid rgba(33,27,20,.45);margin-top:5px;background:#fff}
+  .artbox img{width:100%;height:100%;object-fit:cover;display:block}
+  .mini{padding:3px 8px;font-size:11px}
+  .sndrow{display:flex;gap:4px;align-items:center}
+  .sndrow input[type=file]{flex:1;min-width:0;font-size:11px}
+
+  /* ---------- menu screen ---------- */
+  #menuScreen{max-width:760px;margin:0 auto;padding:8vh 16px 0;text-align:center}
+  .menubox{display:inline-block;background:var(--paper-hi);border:2px solid var(--ink);box-shadow:6px 6px 0 var(--shadow);padding:34px 44px}
+  .menubox h1{font-size:44px;letter-spacing:6px;line-height:1}
+  .menubox .tagline{font-style:italic;color:var(--sepia);margin:6px 0 26px}
+  .menubox button.big{display:block;width:100%;margin:10px 0;padding:12px;font-size:16px}
+  .menubox .finePrint{font-size:11px;font-style:italic;color:var(--sepia);margin-top:22px}
+
+  /* ---------- dev studio ---------- */
+  #devScreen{max-width:760px;margin:0 auto;padding:8px 8px 40px}
+  #devLog{font-size:12px;font-style:italic;color:var(--sepia);margin:8px 0;min-height:16px}
+  .devgrid{display:grid;grid-template-columns:1fr 292px;gap:16px;align-items:start}
+  @media (max-width:640px){.devgrid{grid-template-columns:1fr}}
+  .devsec{font-variant:small-caps;letter-spacing:2px;font-size:12px;color:var(--sepia);border-bottom:1px solid var(--sepia);margin:12px 0 8px}
+  .devcards{display:flex;flex-wrap:wrap;gap:8px}
+  .devcards .card{width:76px;max-width:76px;flex:none;cursor:pointer}
+  .devcards .card.editing{outline:3px solid var(--ink);outline-offset:2px;transform:rotate(0deg)}
+  #devEditor{background:var(--paper-hi);border:1.5px solid var(--ink);box-shadow:3px 3px 0 var(--shadow);padding:12px;position:sticky;top:8px}
+  .fld{margin-bottom:8px}
+  .fld label{display:block;font-variant:small-caps;letter-spacing:1px;font-size:11px;color:var(--sepia)}
+  .fld input[type=text],.fld input[type=number],.fld select{
+    width:100%;font-family:inherit;font-size:14px;background:var(--paper);
+    border:1px solid var(--ink);padding:5px 7px;color:var(--ink)
+  }
+  .fldrow{display:flex;gap:8px}.fldrow .fld{flex:1}
+  .kwrow{display:flex;gap:12px;flex-wrap:wrap;font-size:13px}
+  .kwrow label{display:flex;align-items:center;gap:4px;font-variant:normal;color:var(--ink);font-size:13px}
+  .devbar{display:flex;gap:6px;flex-wrap:wrap;margin-top:14px}
+  .devbar button,.filebtn{font-size:12px;padding:7px 10px}
+  .filebtn{font-family:inherit;font-variant:small-caps;letter-spacing:1px;background:var(--paper-hi);border:1.5px solid var(--ink);box-shadow:2px 2px 0 var(--shadow);cursor:pointer;display:inline-block}
+  #fPreview{min-height:100px;justify-content:flex-start}
+  #fPreview .card{cursor:default}
+
+  /* ---------- skin tints: whole palette swaps via CSS variables ---------- */
+  body[data-theme="midnight"]{--paper:#221D15;--paper-hi:#2C261B;--ink:#E8DFC9;--sepia:#A08D6E;--blood:#D96A50;--gold:#C9A24E;--shadow:rgba(0,0,0,.5)}
+  body[data-theme="coffee"]{--paper:#E3D3B5;--paper-hi:#EEE2C9;--ink:#2A1F12;--sepia:#7A5A38;--blood:#6E2418;--gold:#8A5A1F;--shadow:rgba(42,31,18,.28)}
+  body[data-theme="jade"]{--paper:#E2EADF;--paper-hi:#EFF4EC;--ink:#1C2A22;--sepia:#5E7A66;--blood:#7E2A1C;--gold:#4E7A3E;--shadow:rgba(28,42,34,.25)}
+  body[data-theme="ember"]{--paper:#F0DCC8;--paper-hi:#F7E9D8;--ink:#2A160E;--sepia:#9A5C34;--blood:#A82A12;--gold:#B0641E;--shadow:rgba(42,22,14,.26)}
+  body[data-theme="nocturne"]{--paper:#E6E0EE;--paper-hi:#F0EBF6;--ink:#241B2E;--sepia:#7A6E92;--blood:#7E2A54;--gold:#7A5AA0;--shadow:rgba(36,27,46,.25)}
+
+  /* ---------- settings screen ---------- */
+  #settingsScreen{max-width:760px;margin:0 auto;padding:8px}
+  .setrow{display:flex;justify-content:space-between;align-items:center;gap:12px;border-bottom:1px dashed var(--sepia);padding:14px 4px;flex-wrap:wrap}
+  .setrow>label{font-variant:small-caps;letter-spacing:1.5px;font-size:13px;color:var(--sepia)}
+  #themeSwatches{display:flex;gap:8px;flex-wrap:wrap}
+  .swatch{width:52px;height:40px;border:2px solid var(--ink);cursor:pointer;box-shadow:2px 2px 0 var(--shadow);position:relative;padding:0}
+  .swatch span{position:absolute;bottom:-16px;left:50%;transform:translateX(-50%);font-size:9px;font-variant:small-caps;letter-spacing:.5px;color:var(--sepia);white-space:nowrap}
+  .swatch.on{outline:3px solid var(--ink);outline-offset:2px}
+  #themeSwatches{padding-bottom:16px}
+
+  @media (prefers-reduced-motion:reduce){
+    .card,.card.attacking{transition:none}
+    .card.hit,.card.dying,.dmgfloat{animation-duration:.01s}
+  }
+</style>
+</head>
+<body class="phase-shop">
+<div id="bgShop" class="bglayer">
+  <div class="pz far"></div>
+  <div class="pz mid"></div>
+  <div class="pz near"></div>
+</div>
+<div id="bgBattle" class="bglayer"></div>
+<div id="menuScreen">
+  <div class="menubox">
+    <h1>INKBOUND</h1>
+    <p class="tagline">an auto battler drawn in ink</p>
+    <button class="primary big" id="mPlay">New Game</button>
+    <button class="big hidden" id="mContinue">Continue</button>
+    <button class="big" id="mDev">Card Studio <span class="costtag">dev</span></button>
+    <button class="big" id="mSettings">Settings</button>
+    <p class="finePrint">rounds of coffee · rounds of war</p>
+  </div>
+</div>
+
+<div id="settingsScreen" class="hidden">
+  <div class="ledger">
+    <div class="title">SETTINGS <em>— ink &amp; comfort</em></div>
+    <button id="setBack" class="mini">☰ menu</button>
+  </div>
+  <div class="setrow"><label>Skin tint</label><div id="themeSwatches"></div></div>
+  <div class="setrow"><label>Sound</label><button id="setSound">On 🔊</button></div>
+  <div class="setrow"><label>Combat speed</label><button id="setSpeed">Quill (normal)</button></div>
+  <div class="setrow"><label>Café parallax</label><button id="setParallax">On</button></div>
+</div>
+
+<div id="devScreen" class="hidden">
+  <div class="ledger">
+    <div class="title">CARD STUDIO <em>— dev tools</em></div>
+    <button id="devBack" class="mini">☰ menu</button>
+  </div>
+  <div id="devLog">Select a card to edit, or create a new one.</div>
+  <div class="devgrid">
+    <div id="devList"></div>
+    <div id="devEditor">
+      <div class="fld"><label>Kind</label>
+        <select id="fKind"><option value="creature">Creature</option><option value="spell">Spell</option></select>
+      </div>
+      <div class="fld"><label>Name</label><input type="text" id="fName"></div>
+      <div class="fldrow">
+        <div class="fld"><label>Tier</label><input type="number" id="fTier" min="1" max="6" value="1"></div>
+        <div class="fld"><label>Glyph (emoji)</label><input type="text" id="fGlyph" value="💧"></div>
+      </div>
+      <div class="fld"><label>Card art (replaces glyph)</label>
+        <input type="file" id="fArt" accept="image/*">
+        <button id="fArtClear" class="mini" type="button">clear art</button>
+      </div>
+      <div class="fld"><label>Audio — placed / cast</label>
+        <div class="sndrow"><input type="file" id="fSndPlace" accept="audio/*"><button class="mini" id="pSndPlace" type="button">▶</button><button class="mini" id="xSndPlace" type="button">✕</button></div>
+      </div>
+      <div class="fld"><label>Audio — attacks</label>
+        <div class="sndrow"><input type="file" id="fSndAttack" accept="audio/*"><button class="mini" id="pSndAttack" type="button">▶</button><button class="mini" id="xSndAttack" type="button">✕</button></div>
+      </div>
+      <div class="fld"><label>Audio — dies</label>
+        <div class="sndrow"><input type="file" id="fSndDie" accept="audio/*"><button class="mini" id="pSndDie" type="button">▶</button><button class="mini" id="xSndDie" type="button">✕</button></div>
+      </div>
+      <div id="creatureFields">
+        <div class="fldrow">
+          <div class="fld"><label>Attack</label><input type="number" id="fAtk" min="0" value="2"></div>
+          <div class="fld"><label>Health</label><input type="number" id="fHp" min="1" value="2"></div>
+        </div>
+        <div class="fld"><label>Type</label>
+          <input type="text" id="fTribe" list="tribeList" placeholder="Beast, Spirit, your own…">
+          <datalist id="tribeList">
+            <option value="Beast"></option><option value="Spirit"></option><option value="Construct"></option>
+            <option value="Scribe"></option><option value="Horror"></option>
+          </datalist>
+        </div>
+        <div class="fld"><label>Keywords</label>
+          <div class="kwrow">
+            <label><input type="checkbox" id="fKwB"> Bulwark</label>
+            <label><input type="checkbox" id="fKwW"> Ward</label>
+            <label><input type="checkbox" id="fKwV"> Venom</label>
+          </div>
+        </div>
+        <div class="fld"><label>Last Rites (on death)</label>
+          <select id="fLr">
+            <option value="">none</option>
+            <option value="buff">buff a random ally</option>
+            <option value="summon">summon Blots</option>
+          </select>
+        </div>
+        <div class="fldrow" id="lrBuffFields">
+          <div class="fld"><label>Buff +X/+X</label><input type="number" id="fLrV" min="1" value="1"></div>
+        </div>
+        <div class="fldrow hidden" id="lrSummonFields">
+          <div class="fld"><label>Count</label><input type="number" id="fLrC" min="1" max="7" value="1"></div>
+          <div class="fld"><label>Atk</label><input type="number" id="fLrA" min="0" value="2"></div>
+          <div class="fld"><label>Hp</label><input type="number" id="fLrH" min="1" value="2"></div>
+        </div>
+        <div class="fld"><label>Trigger — when…</label>
+          <select id="fTrEv">
+            <option value="">none</option>
+            <option value="place">When placed (battlecry)</option>
+            <option value="cstart">At combat start</option>
+            <option value="sstart">At each shop start</option>
+            <option value="attack">After this attacks</option>
+            <option value="hurt">When this survives damage</option>
+            <option value="kill">When this kills</option>
+            <option value="allyDeath">When an ally dies</option>
+            <option value="enemyDeath">When an enemy dies</option>
+          </select>
+        </div>
+        <div id="trigFxFields" class="hidden">
+          <div class="fld"><label>…then</label>
+            <select id="fTrFx">
+              <option value="buffSelf">+A/+H to self</option>
+              <option value="buffAlly">+A/+H to a random ally</option>
+              <option value="buffAll">+A/+H to all allies</option>
+              <option value="dmgRand">deal A damage to a random enemy</option>
+              <option value="summon">summon C Blots (A/H)</option>
+              <option value="gold">gain A gold (shop events)</option>
+              <option value="ward">gain Ward</option>
+            </select>
+          </div>
+          <div class="fldrow">
+            <div class="fld" id="trA"><label>A (amount/atk)</label><input type="number" id="fTrA" value="1"></div>
+            <div class="fld" id="trH"><label>H (health)</label><input type="number" id="fTrH" value="1"></div>
+            <div class="fld hidden" id="trC"><label>Count</label><input type="number" id="fTrC" min="1" value="1"></div>
+          </div>
+        </div>
+      </div>
+      <div id="spellFields" class="hidden">
+        <div class="fldrow">
+          <div class="fld"><label>Cost</label><input type="number" id="fCost" min="0" value="2"></div>
+          <div class="fld"><label>Amount</label><input type="number" id="fAmt" min="1" value="2"></div>
+        </div>
+        <div class="fld"><label>Effect</label>
+          <select id="fFx">
+            <option value="buff2">Buff a creature (+amt/+amt)</option>
+            <option value="gold2">Gain amt gold</option>
+            <option value="kwB">Grant Bulwark</option>
+            <option value="kwW">Grant Ward</option>
+            <option value="kwV">Grant Venom</option>
+            <option value="copy">Copy a creature</option>
+            <option value="buffall">+amt/+amt to all creatures</option>
+          </select>
+        </div>
+        <div class="fld"><label>Card text</label><input type="text" id="fDesc" placeholder="shown on the card"></div>
+      </div>
+      <div class="fld"><label>Preview</label><div id="fPreview" class="row"></div></div>
+      <div class="devbar">
+        <button id="devNew" class="mini">New</button>
+        <button id="devSave" class="primary mini">Save</button>
+        <button id="devDup" class="mini">Duplicate</button>
+        <button id="devDelete" class="danger mini">Delete</button>
+      </div>
+      <div class="devbar">
+        <button id="devExport" class="mini">Export JSON</button>
+        <label class="filebtn mini">Import JSON<input type="file" id="devImport" accept=".json,application/json" hidden></label>
+        <button id="devReset" class="mini">Reset Defaults</button>
+        <button id="devSim" class="mini">Balance Sim</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="app" class="hidden">
+  <div class="ledger">
+    <div class="title">INKBOUND <em>— a battler drawn in ink</em> <button id="btnMute" class="mini" title="mute">🔊</button> <button id="btnMenu" class="mini">☰</button></div>
+    <div class="stats">
+      <div class="stat"><span class="lbl">round</span> <b id="uiRound">1</b></div>
+      <div class="stat gold"><span class="lbl">gold</span> <b id="uiGold">3</b></div>
+      <div class="stat hp"><span class="lbl">health</span> <b id="uiHP">30</b></div>
+      <div class="stat"><span class="lbl">tier</span> <b id="uiTier">1</b></div>
+    </div>
+  </div>
+
+  <div id="ghosts"></div>
+
+  <div class="rulehead" id="enemyHead">the opposing page</div>
+  <div class="row" id="enemyBoard"></div>
+
+  <div class="rulehead">your board</div>
+  <div class="row" id="board"></div>
+
+  <div class="rulehead" id="shopHead">the scriptorium café (shop)</div>
+  <div class="row" id="shop"></div>
+
+  <div id="log">Drag creatures onto your page (3 gold); drop spells on a creature to cast. Inkwell sells. Three of a kind become Golden.</div>
+</div>
+
+<div id="inkwell" class="hidden">🫙 the inkwell — drop to sell</div>
+
+<div id="actions" class="hidden">
+  <button id="btnRoll">Redraw <span class="costtag">1g</span></button>
+  <button id="btnFreeze">Freeze</button>
+  <button id="btnUpgrade">Tier Up <span class="costtag" id="upCost">5g</span></button>
+  <button id="btnFight" class="primary">To Battle ⚔</button>
+</div>
+
+<div class="overlay hidden" id="resultOverlay">
+  <div class="scroll">
+    <h2 id="resTitle">Victory</h2>
+    <p id="resText"></p>
+    <button class="primary" id="btnNext">Continue</button>
+  </div>
+</div>
+
+<div class="overlay hidden" id="endOverlay">
+  <div class="scroll">
+    <h2 id="endTitle">The Last Page</h2>
+    <p id="endText"></p>
+    <button class="primary" id="btnRestart">Write it again</button>
+  </div>
+</div>
+<script>
+"use strict";
+/* ================= INKBOUND — ink & parchment auto battler ================= */
+
+/* ---------- card pool ----------
+   kw: B=Bulwark(must be attacked) W=Ward(blocks first hit) V=Venom(kills what it damages)
+   lr: last rites, fires on death */
+const POOL=[
+  {n:"Ink Wisp",g:"💧",t:1,a:2,h:1,tribe:"Spirit"},
+  {n:"Quill Sprite",g:"🪶",t:1,a:1,h:2,kw:"W",tribe:"Spirit"},
+  {n:"Candle Imp",g:"🕯️",t:1,a:1,h:3,tribe:"Spirit"},
+  {n:"Page Golem",g:"📄",t:1,a:2,h:2,tribe:"Construct"},
+  {n:"Blot Hound",g:"🐕",t:2,a:3,h:2,tribe:"Beast"},
+  {n:"Inkwell Guard",g:"🏺",t:2,a:2,h:4,kw:"B",tribe:"Construct"},
+  {n:"Scribe Adept",g:"✒️",t:2,a:2,h:3,lr:{type:"buff",v:1},tribe:"Scribe"},
+  {n:"Paper Wyrm",g:"🐍",t:2,a:4,h:1,tribe:"Beast"},
+  {n:"Sable Assassin",g:"🗡️",t:3,a:3,h:3,kw:"V",tribe:"Scribe"},
+  {n:"Vellum Knight",g:"🛡️",t:3,a:3,h:5,kw:"B",tribe:"Scribe"},
+  {n:"Ink Elemental",g:"🌊",t:3,a:4,h:4,tribe:"Spirit"},
+  {n:"Chapter Ghoul",g:"💀",t:3,a:3,h:4,lr:{type:"summon",a:2,h:2,c:1},tribe:"Horror"},
+  {n:"Folio Colossus",g:"🗿",t:4,a:5,h:6,tribe:"Construct"},
+  {n:"Night Calligrapher",g:"🖋️",t:4,a:6,h:4,kw:"W",tribe:"Scribe"},
+  {n:"Marginalia Beast",g:"🐉",t:4,a:4,h:7,kw:"B",tribe:"Beast"},
+  {n:"Stain Leviathan",g:"🐋",t:4,a:5,h:5,lr:{type:"buff",v:2},tribe:"Beast"},
+  {n:"Grand Illuminator",g:"☀️",t:5,a:6,h:6,kw:"W",tribe:"Scribe"},
+  {n:"Palimpsest Horror",g:"🕷️",t:5,a:7,h:5,kw:"V",tribe:"Horror"},
+  {n:"Codex Titan",g:"📚",t:5,a:6,h:8,kw:"B",tribe:"Construct"},
+  {n:"The Unwritten",g:"👁️",t:6,a:9,h:9,tribe:"Horror"},
+  {n:"Inkfather",g:"🌑",t:6,a:7,h:7,lr:{type:"summon",a:4,h:4,c:2},tribe:"Horror"},
+  {n:"Bindings of Night",g:"⛓️",t:6,a:5,h:10,kw:"BW",tribe:"Construct"},
+  {n:"Mourning Quill",g:"🪦",t:2,a:1,h:3,tribe:"Spirit",trig:{ev:"allyDeath",fx:"buffSelf",a:1,h:1}},
+  {n:"Ink Drinker",g:"🧛",t:3,a:3,h:3,tribe:"Horror",trig:{ev:"kill",fx:"buffSelf",a:2,h:2}},
+];
+const KWNAME={B:"Bulwark",W:"Ward",V:"Venom"};
+
+/* ---------- spell pool ----------
+   tgt: must be dropped on one of your creatures; otherwise drop anywhere on your page */
+const SPELLS=[
+  {n:"Fresh Ink",g:"🫗",t:1,cost:2,tgt:true, fx:"buff2", amt:2, desc:"+2/+2 to a creature"},
+  {n:"Gold Leaf",g:"🪙",t:2,cost:1,tgt:false,fx:"gold2", amt:2, desc:"Gain 2 gold"},
+  {n:"Underline",g:"📏",t:2,cost:2,tgt:true, fx:"kwB",  desc:"Give a creature Bulwark"},
+  {n:"Blotting Paper",g:"📜",t:3,cost:2,tgt:true, fx:"kwW",  desc:"Give a creature Ward"},
+  {n:"Poison Pen",g:"☠️",t:3,cost:3,tgt:true, fx:"kwV",  desc:"Give a creature Venom"},
+  {n:"Carbon Copy",g:"👥",t:4,cost:4,tgt:true, fx:"copy", desc:"Add a plain copy of a creature"},
+  {n:"Illumination",g:"✨",t:5,cost:4,tgt:false,fx:"buffall",amt:1,desc:"+1/+1 to all your creatures"},
+];
+const TGT_FX={buff2:1,kwB:1,kwW:1,kwV:1,copy:1};
+
+/* ---------- trigger system: when EVENT happens, do EFFECT ---------- */
+const TRIG_EV={place:"When placed (battlecry)",cstart:"At combat start",sstart:"At each shop start",
+               attack:"After this attacks",hurt:"When this survives damage",kill:"When this kills",
+               allyDeath:"When an ally dies",enemyDeath:"When an enemy dies"};
+const TRIG_FX={buffSelf:"+A/+H to self",buffAlly:"+A/+H to a random ally",buffAll:"+A/+H to all allies",
+               dmgRand:"deal A damage to a random enemy",summon:"summon C Blots (A/H)",
+               gold:"gain A gold (shop events)",ward:"gain Ward"};
+const TRIG_EV_SHORT={place:"Placed",cstart:"Combat",sstart:"Shop",attack:"Attack",hurt:"Hurt",kill:"Kill",allyDeath:"Ally dies",enemyDeath:"Foe dies"};
+function trigText(t){
+  if(!t)return "";
+  const fx={buffSelf:`+${t.a}/+${t.h} self`,buffAlly:`+${t.a}/+${t.h} ally`,buffAll:`+${t.a}/+${t.h} all`,
+            dmgRand:`${t.a} dmg to a foe`,summon:`summon ${t.c||1}× ${t.a}/${t.h}`,gold:`+${t.a} gold`,ward:"gain Ward"}[t.fx]||"";
+  return `${TRIG_EV_SHORT[t.ev]||t.ev}: ${fx}`;
+}
+function mkSpell(proto){const s=clone(proto);s.uid=uid();s.spell=true;return s;}
+const DEFAULT_DATA=JSON.parse(JSON.stringify({pool:POOL,spells:SPELLS}));
+const SHOP_SIZE=[3,3,4,4,5,6];
+const UP_COST={2:5,3:7,4:8,5:9,6:10};
+const GHOST_NAMES=["Vesper","Mordecai","Sallow","Bramwell","Ottoline","Grimsby","Perpetua"];
+const CARD_COST=3, ROLL_COST=1, SELL_GAIN=1, MAX_BOARD=7, MAX_GOLD=10;
+
+/* ---------- asset registry (art & audio) ----------
+   cards carry tiny keys; the heavy dataURLs live here once, so combat
+   snapshot cloning stays cheap even with big files attached */
+const ASSETS={}; let assetSeq=1;
+function regAsset(dataURL){const id="a"+(assetSeq++);ASSETS[id]=dataURL;return id;}
+function assetURL(v){if(!v)return null;if(typeof v==="string"&&v.startsWith("data:"))return v;return ASSETS[v]||null;}
+let audioOn=true, speedMul=1, parallaxOn=true;
+const THEMES=[
+  {key:"",name:"parchment",paper:"#EDE4CE",ink:"#211B14"},
+  {key:"midnight",name:"midnight",paper:"#221D15",ink:"#E8DFC9"},
+  {key:"coffee",name:"coffee",paper:"#E3D3B5",ink:"#2A1F12"},
+  {key:"jade",name:"jade",paper:"#E2EADF",ink:"#1C2A22"},
+  {key:"ember",name:"ember",paper:"#F0DCC8",ink:"#2A160E"},
+  {key:"nocturne",name:"nocturne",paper:"#E6E0EE",ink:"#241B2E"},
+];
+let themeKey="";
+function playSnd(id,vol){
+  if(!audioOn||typeof Audio==="undefined")return;
+  const src=assetURL(id); if(!src)return;
+  try{const a=new Audio(src);a.volume=vol||0.8;a.play().catch(()=>{});}catch(e){}
+}
+
+/* ---------- state ---------- */
+let S=null, uidSeq=1, busy=false;
+const uid=()=>uidSeq++;
+const rnd=n=>Math.floor(Math.random()*n);
+const pick=a=>a[rnd(a.length)];
+const clone=o=>JSON.parse(JSON.stringify(o));
+
+function newGame(){
+  S={round:1,gold:3,hp:30,tier:1,frozen:false,phase:"shop",
+     shop:[],board:[],
+     ghosts:GHOST_NAMES.map(n=>({name:n,hp:30,alive:true})),
+     foe:null};
+  rollShop(); pickFoe(); renderAll();
+  log("Drag creatures onto your page (3 gold); drop spells on a creature to cast. Inkwell sells. Three of a kind become Golden.");
+}
+
+function mk(proto,golden){ // card instance; golden = doubled triple-merge version
+  const c={uid:uid(),n:proto.n,g:proto.g,t:proto.t,a:proto.a,h:proto.h,
+          kw:proto.kw||"",lr:proto.lr?clone(proto.lr):null,w:(proto.kw||"").includes("W"),
+          golden:!!golden,tribe:proto.tribe||"",img:proto.img||null,snd:proto.snd?{...proto.snd}:null,
+          trig:proto.trig?clone(proto.trig):null};
+  if(golden){c.a*=2;c.h*=2;if(c.lr){if(c.lr.v)c.lr.v*=2;if(c.lr.c)c.lr.c*=2;}
+    if(c.trig){if(c.trig.a)c.trig.a*=2;if(c.trig.h)c.trig.h*=2;}}
+  return c;
+}
+function rollShop(){
+  const size=SHOP_SIZE[S.tier-1];
+  const avail=POOL.filter(c=>c.t<=S.tier);
+  const src=avail.length?avail:POOL;
+  const sAvail=SPELLS.filter(s=>s.t<=S.tier);
+  const sSrc=sAvail.length?sAvail:SPELLS;
+  S.shop=Array.from({length:size},()=>mk(pick(src)));
+  if(sSrc.length)S.shop.push(mkSpell(pick(sSrc))); // one spell, off to the side
+}
+function pickFoe(){
+  const alive=S.ghosts.filter(g=>g.alive);
+  S.foe=alive.length?pick(alive):null;
+}
+
+/* ---------- ghost army generation ---------- */
+function ghostBoard(round){ // tuned via 2k-sim sweep: ~10 round games, earned wins
+  const tier=Math.max(1,Math.min(6,1+Math.floor((round-1)/3)+(Math.random()<0.3?1:0)));
+  const count=Math.max(1,Math.min(7,1+Math.floor(round*0.6)));
+  const avail=POOL.filter(c=>c.t<=tier);
+  const arr=Array.from({length:count},()=>mk(pick(avail)));
+  if(round>=5&&Math.random()<0.4){ // late-game ghosts sometimes field a golden
+    const i=rnd(arr.length);
+    arr[i]=mk(POOL.find(p=>p.n===arr[i].n),true);
+  }
+  let bonus=Math.max(0,Math.floor((round-2)/3.2))*count; // simulated buys & buffs
+  while(bonus-->0){const m=pick(arr); if(Math.random()<0.5)m.a++; else m.h++;}
+  return {tier,arr};
+}
+
+/* ---------- shop actions ---------- */
+function buyAt(i,at){
+  if(S.phase!=="shop")return false;
+  if(S.shop[i]&&S.shop[i].spell)return castSpell(i,S.board.length?rnd(S.board.length):null);
+  if(S.gold<CARD_COST){log("Not enough gold — a creature costs 3.");return false;}
+  if(S.board.length>=MAX_BOARD){log("Your page is full (7 creatures). Sell one first.");return false;}
+  S.gold-=CARD_COST;
+  const c=S.shop.splice(i,1)[0];
+  S.board.splice(Math.min(at,S.board.length),0,c);
+  if(c.snd)playSnd(c.snd.place);
+  fireShopTrig("place",c);
+  renderAll();
+  checkTriples();
+  return true;
+}
+function castSpell(i,target){
+  const sp=S.shop[i];
+  if(!sp||!sp.spell)return false;
+  if(S.gold<sp.cost){log(`${sp.n} costs ${sp.cost} gold.`);return false;}
+  const t=target!==null&&target!==undefined?S.board[target]:null;
+  if(sp.tgt&&!t){log(`${sp.n} must be dropped on one of your creatures.`);return false;}
+  const amt=sp.amt||2;
+  switch(sp.fx){
+    case "buff2": t.a+=amt;t.h+=amt; log(`Fresh ink — ${t.n} is redrawn at +${amt}/+${amt}.`); break;
+    case "gold2": log(`Gold leaf peels from the margins — +${amt} gold.`); break;
+    case "kwB": if(t.kw.includes("B")){log(`${t.n} already stands Bulwark.`);return false;} t.kw+="B"; log(`${t.n} is underlined — Bulwark.`); break;
+    case "kwW": if(t.kw.includes("W")||t.w){log(`${t.n} is already warded.`);return false;} t.kw+="W";t.w=true; log(`${t.n} is blotted — Ward.`); break;
+    case "kwV": if(t.kw.includes("V")){log(`${t.n}'s pen is already poisoned.`);return false;} t.kw+="V"; log(`${t.n}'s strokes turn venomous.`); break;
+    case "copy":
+      if(S.board.length>=MAX_BOARD){log("No room on the page for a copy.");return false;}
+      S.board.splice(target+1,0,mk(POOL.find(p=>p.n===t.n)));
+      log(`A carbon copy of ${t.n} appears.`); break;
+    case "buffall":
+      if(!S.board.length){log("No creatures on the page to illuminate.");return false;}
+      { const v=sp.amt||1; S.board.forEach(c=>{c.a+=v;c.h+=v;}); log(`The whole page is illuminated — +${v}/+${v} to all.`); } break;
+  }
+  S.gold-=sp.cost;
+  if(sp.fx==="gold2")S.gold=Math.min(MAX_GOLD,S.gold+(sp.amt||2));
+  if(sp.snd)playSnd(sp.snd.place);
+  S.shop.splice(i,1);
+  renderAll();
+  checkTriples();
+  return true;
+}
+function buy(i){return buyAt(i,S.board.length);}
+function sell(i){
+  const c=S.board.splice(i,1)[0];
+  const gain=c.golden?3:SELL_GAIN;
+  S.gold=Math.min(MAX_GOLD,S.gold+gain);
+  log(`${c.golden?"Golden ":""}${c.n} dissolves back into the inkwell (+${gain} gold).`);
+  renderAll();
+}
+function moveCard(from,to){ // `to` is the index among the board *without* the moved card
+  const c=S.board.splice(from,1)[0];
+  S.board.splice(Math.min(to,S.board.length),0,c);
+  renderAll();
+}
+function fireShopTrig(ev,c){
+  const t=c.trig;
+  if(!t||t.ev!==ev)return;
+  switch(t.fx){
+    case "buffSelf": c.a+=t.a;c.h+=t.h; break;
+    case "buffAlly":{const o=S.board.filter(x=>x!==c);if(o.length){const g=pick(o);g.a+=t.a;g.h+=t.h;}break;}
+    case "buffAll": S.board.forEach(x=>{x.a+=t.a;x.h+=t.h;}); break;
+    case "gold": S.gold=Math.min(MAX_GOLD,S.gold+t.a); break;
+    case "ward": if(!c.w){c.w=true;if(!c.kw.includes("W"))c.kw+="W";} break;
+    case "summon": for(let i=0;i<(t.c||1)&&S.board.length<MAX_BOARD;i++)
+      S.board.push({uid:uid(),n:"Blot",g:"⚫",t:1,a:t.a,h:t.h,kw:"",lr:null,w:false,golden:false,tribe:"",img:null,snd:null,trig:null});
+      break;
+    /* dmgRand has no meaning in the shop */
+  }
+}
+function checkTriples(){
+  let merged=true;
+  while(merged){
+    merged=false;
+    const groups={};
+    S.board.forEach((c,i)=>{if(!c.golden)(groups[c.n]=groups[c.n]||[]).push(i);});
+    for(const n in groups){
+      if(groups[n].length>=3){
+        const idxs=groups[n], copies=idxs.map(ix=>S.board[ix]);
+        const proto=POOL.find(p=>p.n===n);
+        const extraA=copies.reduce((s,c)=>s+c.a,0)-proto.a*3; // spell buffs carry into the golden
+        const extraH=copies.reduce((s,c)=>s+c.h,0)-proto.h*3;
+        const kws=new Set(((proto.kw||"")+copies.map(c=>c.kw).join("")).split("").filter(Boolean));
+        S.board.splice(idxs[2],1);S.board.splice(idxs[1],1);S.board.splice(idxs[0],1);
+        const g=mk(proto,true);
+        g.a+=extraA; g.h+=extraH;
+        g.kw=[...kws].join(""); g.w=g.kw.includes("W");
+        S.board.splice(idxs[0],0,g);
+        renderAll();
+        log(`✦ Three ${n}s bleed together — a Golden ${n} is drawn.`);
+        const el=cardEl(g.uid);
+        if(el){const r=el.getBoundingClientRect();inkSplat(r.left+r.width/2,r.top+r.height/2,"#8A6A1F",1.7);}
+        merged=true;break;
+      }
+    }
+  }
+}
+function deselect(){}
+function doRoll(){
+  if(S.gold<ROLL_COST)return log("No gold left to redraw.");
+  S.gold-=ROLL_COST;S.frozen=false;rollShop();deselect();renderAll();
+}
+function doFreeze(){S.frozen=!S.frozen;log(S.frozen?"The shop is frozen in ice-black ink.":"Shop unfrozen.");renderAll();}
+function doUpgrade(){
+  if(S.tier>=6)return;
+  const c=UP_COST[S.tier+1];
+  if(S.gold<c)return log(`Tier ${S.tier+1} costs ${c} gold.`);
+  S.gold-=c;S.tier++;log(`The scriptorium expands — tier ${S.tier} creatures available.`);
+  deselect();renderAll();
+}
+
+/* ---------- combat simulation ---------- */
+function simulate(pArr,gArr){
+  const A=pArr.map(clone), B=gArr.map(clone);
+  A.forEach(m=>m.k=0); B.forEach(m=>m.k=0); // attacks made
+  const steps=[]; let side=A.length===B.length?rnd(2):(A.length>B.length?0:1);
+  let guard=0, trigBudget=400;
+  const alive=arr=>arr.length>0;
+  const token=(a,h)=>({uid:uid(),n:"Blot",g:"⚫",t:1,a,h,kw:"",lr:null,w:false,k:99,trig:null});
+
+  function fireT(ev,unit,allies,enemies,step){
+    const t=unit.trig;
+    if(!t||t.ev!==ev||unit.h<=0||trigBudget--<=0)return;
+    switch(t.fx){
+      case "buffSelf": unit.a+=t.a;unit.h+=t.h;step.floats.push({uid:unit.uid,txt:`+${t.a}/+${t.h}`}); break;
+      case "buffAlly":{const o=allies.filter(x=>x!==unit&&x.h>0);if(o.length){const g=pick(o);g.a+=t.a;g.h+=t.h;step.floats.push({uid:g.uid,txt:`+${t.a}/+${t.h}`});}break;}
+      case "buffAll": allies.forEach(x=>{if(x.h>0){x.a+=t.a;x.h+=t.h;}});step.floats.push({uid:unit.uid,txt:`+${t.a}/+${t.h} all`}); break;
+      case "dmgRand":{const o=enemies.filter(x=>x.h>0);if(o.length){const d=pick(o);d.h-=t.a;step.floats.push({uid:d.uid,txt:"-"+t.a});}break;}
+      case "summon": for(let i=0;i<(t.c||1)&&allies.length<MAX_BOARD;i++)allies.push(token(t.a,t.h));
+        step.floats.push({uid:unit.uid,txt:"✚"}); break;
+      case "ward": if(!unit.w){unit.w=true;step.floats.push({uid:unit.uid,txt:"ward"});} break;
+      /* gold: shop-only, no combat meaning */
+    }
+  }
+  function lastRites(m,arr,idx){
+    if(!m.lr)return;
+    if(m.lr.type==="buff"&&arr.length){
+      const ally=pick(arr); ally.a+=m.lr.v; ally.h+=m.lr.v;
+    }else if(m.lr.type==="summon"){
+      for(let i=0;i<m.lr.c&&arr.length<MAX_BOARD;i++)
+        arr.splice(Math.min(idx,arr.length),0,token(m.lr.a,m.lr.h));
+    }
+  }
+  function reapAll(){
+    let changed=true,g2=0;
+    while(changed&&g2++<60){
+      changed=false;
+      for(const [arr,foeArr] of [[A,B],[B,A]]){
+        for(let i=arr.length-1;i>=0;i--){
+          if(arr[i].h<=0){
+            const dead=arr.splice(i,1)[0];
+            lastRites(dead,arr,i);
+            steps[steps.length-1].deaths.push(dead.uid);
+            arr.forEach(u=>fireT("allyDeath",u,arr,foeArr,steps[steps.length-1]));
+            foeArr.forEach(u=>fireT("enemyDeath",u,foeArr,arr,steps[steps.length-1]));
+            changed=true;
+          }
+        }
+      }
+    }
+  }
+
+  // combat-start triggers
+  const step0={aSide:-1,auid:null,duid:null,floats:[],deaths:[],after:null};
+  steps.push(step0);
+  A.forEach(u=>fireT("cstart",u,A,B,step0));
+  B.forEach(u=>fireT("cstart",u,B,A,step0));
+  reapAll();
+  if(step0.floats.length||step0.deaths.length)step0.after={A:clone(A),B:clone(B)};
+  else steps.pop();
+
+  while(alive(A)&&alive(B)&&guard++<200){
+    const my=side===0?A:B, foe=side===0?B:A;
+    let atk=my[0]; for(const m of my) if(m.k<atk.k) atk=m;
+    const bulwarks=foe.filter(m=>m.kw.includes("B"));
+    const def=pick(bulwarks.length?bulwarks:foe);
+    const step={aSide:side,auid:atk.uid,duid:def.uid,floats:[],deaths:[],after:null};
+    // simultaneous strike
+    let dDef=atk.a, dAtk=def.a;
+    if(def.w&&dDef>0){def.w=false;dDef=0;step.floats.push({uid:def.uid,txt:"ward!"});}
+    if(atk.w&&dAtk>0){atk.w=false;dAtk=0;step.floats.push({uid:atk.uid,txt:"ward!"});}
+    if(dDef>0){def.h-=dDef;step.floats.push({uid:def.uid,txt:"-"+dDef});if(atk.kw.includes("V"))def.h=Math.min(def.h,0);}
+    if(dAtk>0){atk.h-=dAtk;step.floats.push({uid:atk.uid,txt:"-"+dAtk});if(def.kw.includes("V"))atk.h=Math.min(atk.h,0);}
+    atk.k++;
+    steps.push(step);
+    // triggered events from this strike
+    fireT("attack",atk,my,foe,step);
+    if(dAtk>0&&atk.h>0)fireT("hurt",atk,my,foe,step);
+    if(dDef>0&&def.h>0)fireT("hurt",def,foe,my,step);
+    if(dDef>0&&def.h<=0)fireT("kill",atk,my,foe,step);
+    if(dAtk>0&&atk.h<=0)fireT("kill",def,foe,my,step);
+    reapAll();
+    step.after={A:clone(A),B:clone(B)};
+    side=1-side;
+  }
+  let winner="tie";
+  if(alive(A)&&!alive(B))winner="p"; else if(alive(B)&&!alive(A))winner="g";
+  const dmg=(winner==="p"?A:B).reduce((s,m)=>s+m.t,0);
+  return {steps,winner,dmg,survA:A,survB:B};
+}
+
+/* ---------- combat flow ---------- */
+async function startCombat(){
+  if(S.phase!=="shop"||busy)return;
+  if(!S.foe){return;}
+  busy=true;S.phase="combat";deselect();
+  const gb=ghostBoard(S.round);
+  S.foe.gen=gb;
+  const sndMap={};
+  [...S.board,...gb.arr].forEach(c=>{if(c.snd)sndMap[c.uid]=c.snd;});
+  const res=simulate(S.board,gb.arr);
+  renderAll();
+  renderCombat(S.board.map(clone),gb.arr.map(clone));
+  log(`Round ${S.round}: your page against ${S.foe.name}'s.`);
+  await wait(900);
+  for(const st of res.steps){
+    const aEl=cardEl(st.auid), dEl=cardEl(st.duid);
+    if(aEl){aEl.style.setProperty("--lunge",st.aSide===0?"-16px":"16px");aEl.classList.add("attacking");}
+    if(sndMap[st.auid])playSnd(sndMap[st.auid].attack);
+    await wait(240);
+    if(dEl)dEl.classList.add("hit");
+    for(const f of st.floats){const el=cardEl(f.uid);if(el){const s=document.createElement("span");s.className="dmgfloat";s.textContent=f.txt;el.appendChild(s);}}
+    await wait(340);
+    for(const u of st.deaths){
+      const el=cardEl(u);
+      if(sndMap[u])playSnd(sndMap[u].die);
+      if(el){
+        el.classList.add("dying");
+        const r=el.getBoundingClientRect();
+        inkSplat(r.left+r.width/2,r.top+r.height/2,"#211B14",1.15);
+      }
+    }
+    if(st.deaths.length)await wait(430);
+    renderCombat(st.after.A,st.after.B);
+    await wait(200);
+  }
+  await wait(400);
+  resolveCombat(res);
+}
+function resolveCombat(res){
+  const foe=S.foe; let title,text;
+  if(res.winner==="p"){
+    const hit=res.dmg+S.tier;
+    foe.hp-=hit; if(foe.hp<=0){foe.hp=0;foe.alive=false;}
+    title="Victory";
+    text=`Your creatures cut through ${foe.name}'s page. ${foe.name} takes ${hit} damage${foe.alive?"":" — and is struck from the story"}.`;
+  }else if(res.winner==="g"){
+    const hit=Math.min(12,res.dmg+foe.gen.tier); // capped so one bad round can't end you
+    S.hp-=hit;
+    title="Defeat";
+    text=`${foe.name}'s creatures overwhelm yours. You take ${hit} damage.`;
+  }else{
+    title="A Stalemate";
+    text=`Both pages end blank. No blood, no ink.`;
+  }
+  // the rest of the lobby fights off-page
+  const others=S.ghosts.filter(g=>g.alive&&g!==foe);
+  const felled=[];
+  for(const g of others){
+    if(Math.random()<0.65){
+      g.hp-=4+Math.floor(S.round/2)+rnd(4);
+      if(g.hp<=0){g.hp=0;g.alive=false;felled.push(g.name);}
+    }
+  }
+  if(felled.length)text+=` Elsewhere in the margins, ${felled.join(" and ")} ${felled.length>1?"are":"is"} eliminated.`;
+  renderAll();
+  // end conditions
+  const remaining=S.ghosts.filter(g=>g.alive).length;
+  if(S.hp<=0){S.hp=0;renderAll();return endGame(false,remaining+1);}
+  if(remaining===0)return endGame(true,1);
+  document.getElementById("resTitle").textContent=title;
+  document.getElementById("resTitle").className=res.winner==="p"?"win":"loss";
+  document.getElementById("resText").textContent=text;
+  show("resultOverlay");
+}
+function nextRound(){
+  hide("resultOverlay");
+  S.round++;
+  S.gold=Math.min(MAX_GOLD,2+S.round);
+  if(!S.frozen)rollShop(); S.frozen=false;
+  S.phase="shop";busy=false;pickFoe();
+  S.board.forEach(c=>fireShopTrig("sstart",c));
+  renderAll();
+  log(`Round ${S.round}. ${S.gold} gold to spend.`);
+}
+function endGame(won,place){
+  busy=false;
+  document.getElementById("endTitle").textContent=won?"The Story Is Yours":"Your Ink Runs Dry";
+  document.getElementById("endTitle").className=won?"win":"loss";
+  document.getElementById("endText").textContent=won
+    ?`All seven rivals struck from the story. First place, in ${S.round} rounds.`
+    :`Eliminated in round ${S.round} — placed ${ordinal(place)} of 8.`;
+  show("endOverlay");
+}
+const ordinal=n=>n+(["th","st","nd","rd"][((n%100)-20)%10]||["th","st","nd","rd"][n%100]||"th");
+
+/* ---------- rendering ---------- */
+const $=id=>document.getElementById(id);
+function log(t){if(silent)return;$("log").textContent=t;}
+function show(id){$(id).classList.remove("hidden");}
+function hide(id){$(id).classList.add("hidden");}
+function cardEl(u){return document.querySelector(`[data-uid="${u}"]`);}
+
+let silent=false;
+function cardHTML(c,opts={}){
+  const artSrc=assetURL(c.img);
+  const art=artSrc?`<span class="artbox"><img src="${artSrc}" alt=""></span>`:`<span class="glyph">${c.g}</span>`;
+  if(c.spell){
+    return `<div class="card spellcard ${opts.cls||""}" data-uid="${c.uid}" ${opts.attr||""}>
+      <span class="tier">t${c.t}</span><span class="cost">${c.cost}g</span>
+      ${art}
+      <span class="cname">${c.n}</span>
+      <span class="sdesc">${c.desc||""}</span>
+    </div>`;
+  }
+  const kws=[c.tribe,...[...c.kw].map(k=>KWNAME[k])].filter(Boolean).join(" · ");
+  return `<div class="card ${c.golden?"golden":""} ${c.w?"warded":""} ${opts.cls||""}" data-uid="${c.uid}" ${opts.attr||""}>
+    <span class="tier">t${c.t}</span>${opts.cost?'<span class="cost">3g</span>':""}
+    ${art}
+    <span class="cname">${c.golden?"✦ ":""}${c.n}</span>
+    <span class="kw">${kws}</span>
+    ${c.trig?`<span class="trigline">${trigText(c.trig)}</span>`:""}
+    <div class="statline"><span class="atk">${c.a}</span><span class="hp">${c.h}</span></div>
+  </div>`;
+}
+function slotsHTML(n){let s="";for(let i=0;i<n;i++)s+='<div class="slot">·</div>';return s;}
+
+function renderAll(){
+  if(silent)return;
+  if(document.body&&document.body.classList){
+    document.body.classList.toggle("phase-shop",S.phase==="shop");
+    document.body.classList.toggle("phase-combat",S.phase==="combat");
+  }
+  $("uiRound").textContent=S.round;
+  $("uiGold").textContent=S.gold;
+  $("uiHP").textContent=S.hp;
+  $("uiTier").textContent=S.tier;
+  // ghosts
+  $("ghosts").innerHTML=S.ghosts.map(g=>`
+    <div class="ghost ${g.alive?"":"dead"} ${g===S.foe&&S.phase==="shop"?"foe":""}">
+      <div class="gname">${g.name}</div><div class="ghp">♥ ${g.hp}</div>
+    </div>`).join("");
+  // enemy row (hidden armies during shop)
+  if(S.phase==="shop"){
+    $("enemyHead").textContent=S.foe?`the opposing page — ${S.foe.name} (revealed in battle)`:"the opposing page";
+    $("enemyBoard").innerHTML=slotsHTML(5);
+  }
+  // player board
+  $("board").innerHTML=S.board.map((c,i)=>cardHTML(c,{attr:`data-b="${i}"`})).join("")+slotsHTML(MAX_BOARD-S.board.length);
+  // shop
+  if(S.phase==="shop"){
+    $("shopHead").textContent=`the scriptorium café (shop) — tier ${S.tier}${S.frozen?" · frozen":""}`;
+    $("shop").innerHTML=S.shop.map((c,i)=>
+      (c.spell?'<div class="vdivider"></div>':"")+
+      cardHTML(c,{cost:!c.spell,cls:S.frozen?"frozencard":"",attr:`data-s="${i}"`})
+    ).join("");
+  }else{
+    $("shop").innerHTML="";
+    $("shopHead").textContent="the café empties — to the battlefield";
+  }
+  // buttons
+  $("btnUpgrade").disabled=S.tier>=6||S.phase!=="shop";
+  $("upCost").textContent=S.tier>=6?"max":UP_COST[S.tier+1]+"g";
+  $("btnRoll").disabled=S.phase!=="shop";
+  $("btnFreeze").disabled=S.phase!=="shop";
+  $("btnFight").disabled=S.phase!=="shop"||busy;
+}
+function renderCombat(A,B){
+  $("enemyHead").textContent=`${S.foe.name}'s page`;
+  $("enemyBoard").innerHTML=B.map(c=>cardHTML(c)).join("")||slotsHTML(1);
+  $("board").innerHTML=A.map(c=>cardHTML(c)).join("")||slotsHTML(1);
+}
+const wait=ms=>new Promise(r=>setTimeout(r,ms*speedMul));
+
+/* ---------- ink splats ---------- */
+function inkSplat(x,y,color,scale){
+  color=color||"#211B14"; scale=scale||1;
+  if(!document.body)return;
+  const d=document.createElement("div"); d.className="splat";
+  let blobs="";
+  const n=7+rnd(5);
+  for(let i=0;i<n;i++){
+    const ang=Math.random()*Math.PI*2, dist=(6+rnd(26))*scale;
+    const cx=40+Math.cos(ang)*dist, cy=40+Math.sin(ang)*dist;
+    const rx=(2+rnd(8))*scale, ry=rx*(0.55+Math.random()*0.8);
+    blobs+=`<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="${color}" transform="rotate(${rnd(360)} ${cx} ${cy})" style="animation-delay:${i*16}ms"/>`;
+  }
+  blobs+=`<ellipse cx="40" cy="40" rx="${12*scale}" ry="${10*scale}" fill="${color}"/>`;
+  d.innerHTML=`<svg width="80" height="80" viewBox="0 0 80 80">${blobs}</svg>`;
+  d.style.left=x+"px"; d.style.top=y+"px";
+  document.body.appendChild(d);
+  setTimeout(()=>d.remove(),700);
+}
+
+/* ---------- drag & drop (pointer events: mouse + touch) ---------- */
+let drag=null;
+function overEl(el,x,y){
+  if(!el||el.classList.contains("hidden"))return false;
+  const r=el.getBoundingClientRect();
+  return x>=r.left-6&&x<=r.right+6&&y>=r.top-16&&y<=r.bottom+16;
+}
+function insertIndex(x,skip){
+  const els=[...document.querySelectorAll('#board .card[data-b]')].filter(el=>+el.dataset.b!==skip);
+  let idx=0;
+  for(const el of els){const r=el.getBoundingClientRect(); if(x>r.left+r.width/2)idx++;}
+  return idx;
+}
+function onDown(e){
+  if(!S||S.phase!=="shop"||busy||drag)return;
+  const el=e.target.closest(".card");
+  if(!el)return;
+  const isShop=el.dataset.s!==undefined, isBoard=el.dataset.b!==undefined;
+  if(!isShop&&!isBoard)return;
+  e.preventDefault();
+  drag={el,type:isShop?"shop":"board",idx:+(isShop?el.dataset.s:el.dataset.b),
+        sx:e.clientX,sy:e.clientY,x:e.clientX,y:e.clientY,lastX:e.clientX,
+        rot:0,tRot:0,started:false,clone:null,w:0,h:0,raf:0};
+  window.addEventListener("pointermove",onMove);
+  window.addEventListener("pointerup",onUp);
+  window.addEventListener("pointercancel",onUp);
+}
+function boardCardAt(x,y){
+  for(const el of document.querySelectorAll('#board .card[data-b]')){
+    const r=el.getBoundingClientRect();
+    if(x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom)return {idx:+el.dataset.b,el};
+  }
+  return null;
+}
+let spellHover=null;
+function onMove(e){
+  if(!drag)return;
+  drag.x=e.clientX; drag.y=e.clientY;
+  if(!drag.started){
+    if(Math.hypot(drag.x-drag.sx,drag.y-drag.sy)<7)return;
+    drag.started=true;
+    const r=drag.el.getBoundingClientRect();
+    const c=drag.el.cloneNode(true);
+    c.classList.add("dragclone");
+    c.style.width=r.width+"px"; c.style.maxWidth="none";
+    document.body.appendChild(c);
+    drag.clone=c; drag.w=r.width; drag.h=r.height;
+    drag.el.classList.add("ghosted");
+    $("board").classList.add("dropready");
+    if(drag.type==="board")$("inkwell").classList.remove("hidden");
+    dragLoop();
+  }
+  const vx=drag.x-drag.lastX; drag.lastX=drag.x;
+  drag.tRot=Math.max(-20,Math.min(20,drag.tRot+vx*0.9)); // swing with the throw
+  if(drag.type==="board")$("inkwell").classList.toggle("hot",overEl($("inkwell"),drag.x,drag.y));
+  // targeted spell: highlight the creature under the pointer
+  if(drag.type==="shop"&&S.shop[drag.idx]&&S.shop[drag.idx].spell&&S.shop[drag.idx].tgt){
+    const hit=boardCardAt(drag.x,drag.y);
+    if(spellHover&&(!hit||hit.el!==spellHover))spellHover.classList.remove("spelltarget");
+    spellHover=hit?hit.el:null;
+    if(spellHover)spellHover.classList.add("spelltarget");
+  }
+}
+function dragLoop(){
+  if(!drag||!drag.clone)return;
+  drag.rot+=(drag.tRot-drag.rot)*0.25; // pendulum lag
+  drag.tRot*=0.86;                     // settle when still
+  drag.clone.style.left=(drag.x-drag.w/2)+"px";
+  drag.clone.style.top=(drag.y-drag.h*0.55)+"px";
+  drag.clone.style.transform=`rotate(${drag.rot.toFixed(2)}deg) scale(1.07)`;
+  drag.raf=requestAnimationFrame(dragLoop);
+}
+function onUp(){
+  window.removeEventListener("pointermove",onMove);
+  window.removeEventListener("pointerup",onUp);
+  window.removeEventListener("pointercancel",onUp);
+  if(!drag)return;
+  const d=drag; drag=null;
+  cancelAnimationFrame(d.raf);
+  const onBoard=overEl($("board"),d.x,d.y);          // hit-test BEFORE hiding targets
+  const onInkwell=d.type==="board"&&overEl($("inkwell"),d.x,d.y);
+  const hitCard=boardCardAt(d.x,d.y);
+  if(spellHover){spellHover.classList.remove("spelltarget");spellHover=null;}
+  $("board").classList.remove("dropready");
+  $("inkwell").classList.add("hidden"); $("inkwell").classList.remove("hot");
+  d.el.classList.remove("ghosted");
+  if(d.clone)d.clone.remove();
+  if(!d.started)return;
+  if(d.type==="shop"){
+    const item=S.shop[d.idx];
+    if(item&&item.spell){
+      if(item.tgt){
+        if(hitCard){if(castSpell(d.idx,hitCard.idx))inkSplat(d.x,d.y,"#3B3A60",1.25);}
+        else if(onBoard)log(`${item.n} must be dropped on one of your creatures.`);
+      }else if(onBoard){
+        if(castSpell(d.idx,null))inkSplat(d.x,d.y,"#3B3A60",1.25);
+      }
+    }else if(onBoard){
+      if(buyAt(d.idx,insertIndex(d.x,-1)))inkSplat(d.x,d.y);
+    }
+  }else if(d.type==="board"){
+    if(onInkwell){sell(d.idx);inkSplat(d.x,d.y,"#7E2A1C",1.3);}
+    else if(onBoard){moveCard(d.idx,insertIndex(d.x,d.idx));inkSplat(d.x,d.y,"#211B14",0.75);}
+    else renderAll();
+  }
+}
+document.addEventListener("pointerdown",onDown);
+
+/* ---------- café parallax: three planes drift at different rates with the pointer ---------- */
+(function(){
+  if(!document.body||typeof window.matchMedia!=="function")return;
+  if(matchMedia("(prefers-reduced-motion: reduce)").matches)return;
+  const layers=document.querySelectorAll("#bgShop .pz");
+  if(!layers.length)return;
+  const DEPTH=[6,13,24]; // far drifts least, near drifts most
+  let queued=false,nx=0,ny=0;
+  document.addEventListener("pointermove",e=>{
+    if(!parallaxOn)return;
+    nx=e.clientX/window.innerWidth-.5;
+    ny=e.clientY/window.innerHeight-.5;
+    if(queued)return;
+    queued=true;
+    requestAnimationFrame(()=>{
+      queued=false;
+      layers.forEach((l,i)=>{
+        l.style.transform=`translate(${(-nx*DEPTH[i]).toFixed(1)}px,${(-ny*DEPTH[i]).toFixed(1)}px)`;
+      });
+    });
+  },{passive:true});
+})();
+$("btnRoll").onclick=doRoll;
+$("btnFreeze").onclick=doFreeze;
+$("btnUpgrade").onclick=doUpgrade;
+$("btnFight").onclick=startCombat;
+$("btnNext").onclick=nextRound;
+$("btnRestart").onclick=()=>{hide("endOverlay");newGame();};
+
+/* ================= menu & screens ================= */
+let gameStarted=false;
+function showScreen(name){
+  $("menuScreen").classList.toggle("hidden",name!=="menu");
+  $("app").classList.toggle("hidden",name!=="game");
+  $("actions").classList.toggle("hidden",name!=="game");
+  $("devScreen").classList.toggle("hidden",name!=="dev");
+  $("settingsScreen").classList.toggle("hidden",name!=="settings");
+  if(name==="menu")$("mContinue").classList.toggle("hidden",!gameStarted);
+  if(name==="dev"){renderDevList();refreshPreview();}
+  if(name==="settings")renderSettings();
+}
+$("mPlay").onclick=()=>{gameStarted=true;newGame();showScreen("game");};
+$("mContinue").onclick=()=>showScreen("game");
+$("mDev").onclick=()=>showScreen("dev");
+$("devBack").onclick=()=>showScreen("menu");
+$("btnMenu").onclick=()=>{if(busy)return log("Wait for the battle to finish.");showScreen("menu");};
+
+/* ================= CARD STUDIO (dev tools) ================= */
+let editing={kind:"creature",idx:null}, editorImg=null;
+const editorSnd={};
+const devLog=t=>{$("devLog").textContent=t;};
+
+function renderDevList(){
+  let html="";
+  for(let t=1;t<=6;t++){
+    const cards=POOL.map((c,i)=>({c,i})).filter(x=>x.c.t===t);
+    if(!cards.length)continue;
+    html+=`<div class="devsec">tier ${t} creatures</div><div class="devcards">`+
+      cards.map(x=>cardHTML(mkPreview(x.c),{cls:(editing.kind==="creature"&&editing.idx===x.i)?"editing":"",attr:`data-dk="creature" data-di="${x.i}"`})).join("")+`</div>`;
+  }
+  html+=`<div class="devsec">spells</div><div class="devcards">`+
+    SPELLS.map((s,i)=>cardHTML(mkPreview(s,true),{cls:(editing.kind==="spell"&&editing.idx===i)?"editing":"",attr:`data-dk="spell" data-di="${i}"`})).join("")+`</div>`;
+  $("devList").innerHTML=html;
+}
+function mkPreview(proto,isSpell){
+  const p=clone(proto); p.uid="pv"+Math.random().toString(36).slice(2,8);
+  if(isSpell||proto.fx)p.spell=true;
+  p.kw=p.kw||""; p.w=(p.kw||"").includes("W");
+  return p;
+}
+function readForm(){
+  const kind=$("fKind").value;
+  const base={n:$("fName").value.trim()||"Unnamed",g:$("fGlyph").value.trim()||"❔",
+              t:Math.max(1,Math.min(6,+$("fTier").value||1))};
+  if(editorImg)base.img=editorImg;
+  if(Object.keys(editorSnd).length)base.snd={...editorSnd};
+  if(kind==="spell"){
+    base.cost=Math.max(0,+$("fCost").value||0);
+    base.fx=$("fFx").value;
+    base.amt=Math.max(1,+$("fAmt").value||1);
+    base.tgt=!!TGT_FX[base.fx];
+    base.desc=$("fDesc").value.trim();
+    return {kind,proto:base};
+  }
+  base.a=Math.max(0,+$("fAtk").value||0);
+  base.h=Math.max(1,+$("fHp").value||1);
+  base.tribe=$("fTribe").value.trim();
+  base.kw=($("fKwB").checked?"B":"")+($("fKwW").checked?"W":"")+($("fKwV").checked?"V":"");
+  const lr=$("fLr").value;
+  if(lr==="buff")base.lr={type:"buff",v:Math.max(1,+$("fLrV").value||1)};
+  if(lr==="summon")base.lr={type:"summon",c:Math.max(1,+$("fLrC").value||1),a:Math.max(0,+$("fLrA").value||0),h:Math.max(1,+$("fLrH").value||1)};
+  const tev=$("fTrEv").value;
+  if(tev)base.trig={ev:tev,fx:$("fTrFx").value,a:Math.max(0,+$("fTrA").value||0),h:Math.max(0,+$("fTrH").value||0),c:Math.max(1,+$("fTrC").value||1)};
+  return {kind,proto:base};
+}
+function writeForm(proto,kind){
+  $("fKind").value=kind;
+  $("fName").value=proto.n||"";
+  $("fTier").value=proto.t||1;
+  $("fGlyph").value=proto.g||"❔";
+  editorImg=proto.img||null;
+  $("fArt").value="";
+  for(const k in editorSnd)delete editorSnd[k];
+  if(proto.snd)Object.assign(editorSnd,proto.snd);
+  ["Place","Attack","Die"].forEach(s=>{$("fSnd"+s).value="";});
+  if(kind==="spell"){
+    $("fCost").value=proto.cost??2;
+    $("fFx").value=proto.fx||"buff2";
+    $("fAmt").value=proto.amt??2;
+    $("fDesc").value=proto.desc||"";
+  }else{
+    $("fAtk").value=proto.a??2;
+    $("fHp").value=proto.h??2;
+    $("fTribe").value=proto.tribe||"";
+    $("fKwB").checked=(proto.kw||"").includes("B");
+    $("fKwW").checked=(proto.kw||"").includes("W");
+    $("fKwV").checked=(proto.kw||"").includes("V");
+    $("fLr").value=proto.lr?proto.lr.type:"";
+    $("fLrV").value=proto.lr&&proto.lr.v?proto.lr.v:1;
+    $("fLrC").value=proto.lr&&proto.lr.c?proto.lr.c:1;
+    $("fLrA").value=proto.lr&&proto.lr.a!==undefined?proto.lr.a:2;
+    $("fLrH").value=proto.lr&&proto.lr.h?proto.lr.h:2;
+    $("fTrEv").value=proto.trig?proto.trig.ev:"";
+    $("fTrFx").value=proto.trig?proto.trig.fx:"buffSelf";
+    $("fTrA").value=proto.trig&&proto.trig.a!==undefined?proto.trig.a:1;
+    $("fTrH").value=proto.trig&&proto.trig.h!==undefined?proto.trig.h:1;
+    $("fTrC").value=proto.trig&&proto.trig.c?proto.trig.c:1;
+  }
+  syncFormVisibility();
+  refreshPreview();
+}
+function syncFormVisibility(){
+  const spell=$("fKind").value==="spell";
+  $("creatureFields").classList.toggle("hidden",spell);
+  $("spellFields").classList.toggle("hidden",!spell);
+  const lr=$("fLr").value;
+  $("lrBuffFields").classList.toggle("hidden",lr!=="buff");
+  $("lrSummonFields").classList.toggle("hidden",lr!=="summon");
+  const tev=$("fTrEv").value, tfx=$("fTrFx").value;
+  $("trigFxFields").classList.toggle("hidden",!tev);
+  $("trA").classList.toggle("hidden",!["buffSelf","buffAlly","buffAll","dmgRand","summon","gold"].includes(tfx));
+  $("trH").classList.toggle("hidden",!["buffSelf","buffAlly","buffAll","summon"].includes(tfx));
+  $("trC").classList.toggle("hidden",tfx!=="summon");
+}
+function refreshPreview(){
+  const {kind,proto}=readForm();
+  $("fPreview").innerHTML=cardHTML(mkPreview(proto,kind==="spell"),{cost:kind==="creature"});
+}
+function devSave(){
+  const {kind,proto}=readForm();
+  const arr=kind==="spell"?SPELLS:POOL;
+  if(editing.kind===kind&&editing.idx!==null&&arr[editing.idx]){
+    arr[editing.idx]=proto;
+    devLog(`Saved changes to ${proto.n}.`);
+  }else{
+    arr.push(proto);
+    editing={kind,idx:arr.length-1};
+    devLog(`${proto.n} added to the ${kind==="spell"?"spell":"creature"} pool.`);
+  }
+  renderDevList();refreshPreview();
+}
+function devDelete(){
+  const arr=editing.kind==="spell"?SPELLS:POOL;
+  if(editing.idx===null||!arr[editing.idx])return devLog("Nothing selected to delete.");
+  if(editing.kind==="creature"&&POOL.length<=1)return devLog("The pool needs at least one creature.");
+  const gone=arr.splice(editing.idx,1)[0];
+  editing.idx=null;
+  devLog(`${gone.n} struck from the pool.`);
+  renderDevList();
+}
+function devDup(){
+  const arr=editing.kind==="spell"?SPELLS:POOL;
+  if(editing.idx===null||!arr[editing.idx])return devLog("Select a card to duplicate.");
+  const copy=clone(arr[editing.idx]); copy.n+=" II";
+  arr.push(copy);
+  editing.idx=arr.length-1;
+  writeForm(copy,editing.kind);
+  renderDevList();
+  devLog(`${copy.n} created.`);
+}
+function devNew(){
+  editing={kind:$("fKind").value,idx:null};
+  writeForm($("fKind").value==="spell"?{n:"",g:"🌀",t:1,cost:2,fx:"buff2",amt:2,desc:""}:{n:"",g:"🌀",t:1,a:2,h:2,kw:"",tribe:""},$("fKind").value);
+  renderDevList();
+  devLog("Blank card — fill it in and Save.");
+}
+function collectAssets(){
+  const ids=new Set();
+  const scan=c=>{if(c.img)ids.add(c.img);if(c.snd)Object.values(c.snd).forEach(v=>v&&ids.add(v));};
+  POOL.forEach(scan);SPELLS.forEach(scan);
+  const out={};
+  ids.forEach(id=>{if(ASSETS[id])out[id]=ASSETS[id];});
+  return out;
+}
+function devExport(){
+  const blob=new Blob([JSON.stringify({pool:POOL,spells:SPELLS,assets:collectAssets()},null,1)],{type:"application/json"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download="inkbound-cards.json";
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+  devLog("Card set exported as inkbound-cards.json.");
+}
+function devImportFile(f){
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      const d=JSON.parse(r.result);
+      if(!Array.isArray(d.pool)||!Array.isArray(d.spells))throw new Error("wrong shape");
+      if(!d.pool.length)throw new Error("empty pool");
+      migrateCardData(d);
+      POOL.length=0;POOL.push(...d.pool);
+      SPELLS.length=0;SPELLS.push(...d.spells);
+      editing.idx=null;renderDevList();
+      devLog(`Imported ${POOL.length} creatures and ${SPELLS.length} spells.`);
+    }catch(err){devLog("Import failed — expected JSON with {pool:[…], spells:[…]}.");}
+  };
+  r.readAsText(f);
+}
+function migrateCardData(d){
+  if(d.assets)Object.assign(ASSETS,d.assets);
+  const fix=v=>(typeof v==="string"&&v.startsWith("data:"))?regAsset(v):v;
+  const scan=c=>{if(c.img)c.img=fix(c.img);if(c.snd)for(const k in c.snd)c.snd[k]=fix(c.snd[k]);};
+  d.pool.forEach(scan);(d.spells||[]).forEach(scan);
+}
+function devReset(){
+  POOL.length=0;POOL.push(...clone(DEFAULT_DATA.pool));
+  SPELLS.length=0;SPELLS.push(...clone(DEFAULT_DATA.spells));
+  editing.idx=null;renderDevList();
+  devLog("Card pools reset to defaults.");
+}
+/* in-browser balance sim: greedy bot plays full games with the CURRENT card pools */
+function devBalanceSim(n=200){
+  const Sbak=S, gsBak=gameStarted;
+  silent=true;
+  const results=[];let errs=0;
+  const val=c=>c.a+c.h+c.t;
+  try{
+    for(let g=0;g<n;g++){
+      try{
+        newGame();let safety=0;
+        while(safety++<60){
+          if(S.tier<6&&S.gold>=UP_COST[S.tier+1]+3&&S.round>=[0,0,3,5,7,9,11][S.tier+1])doUpgrade();
+          let guard=0;
+          while(guard++<20){
+            const creat=S.shop.map((c,i)=>({c,i})).filter(x=>!x.c.spell);
+            if(!creat.length)break;
+            creat.sort((a,b)=>val(b.c)-val(a.c));
+            const best=creat[0];
+            if(S.board.length<7){if(S.gold>=3)buyAt(best.i,S.board.length);else break;}
+            else{
+              const worstI=S.board.reduce((wi,c,i)=>val(c)<val(S.board[wi])?i:wi,0);
+              if(S.gold>=3&&val(best.c)>val(S.board[worstI])+2){sell(worstI);const j=S.shop.indexOf(best.c);if(j>-1)buyAt(j,S.board.length);}
+              else break;
+            }
+          }
+          const si=S.shop.findIndex(c=>c.spell);
+          if(si>-1&&S.gold>=S.shop[si].cost&&S.board.length)castSpell(si,rnd(S.board.length));
+          S.board.sort((x,y)=>(y.kw.includes("B")?1:0)-(x.kw.includes("B")?1:0));
+          if(!S.foe)break;
+          const gb=ghostBoard(S.round);S.foe.gen=gb;
+          const res=simulate(S.board,gb.arr);
+          if(res.winner==="p"){S.foe.hp-=res.dmg+S.tier;if(S.foe.hp<=0)S.foe.alive=false;}
+          else if(res.winner==="g"){S.hp-=Math.min(12,res.dmg+gb.tier);}
+          for(const gh of S.ghosts.filter(x=>x.alive&&x!==S.foe)){
+            if(Math.random()<0.65){gh.hp-=4+Math.floor(S.round/2)+rnd(4);if(gh.hp<=0)gh.alive=false;}
+          }
+          const rem=S.ghosts.filter(x=>x.alive).length;
+          if(S.hp<=0){results.push({won:false,place:rem+1,round:S.round});break;}
+          if(rem===0){results.push({won:true,place:1,round:S.round});break;}
+          S.round++;S.gold=Math.min(MAX_GOLD,2+S.round);rollShop();S.phase="shop";pickFoe();
+        }
+      }catch(e){errs++;}
+    }
+  }finally{
+    silent=false;S=Sbak;gameStarted=gsBak;
+    if(S)renderAll();
+  }
+  if(!results.length)return devLog(`Sim failed — ${errs} errors. Check for cards with impossible values.`);
+  const wr=100*results.filter(r=>r.won).length/results.length;
+  const avgP=results.reduce((s,r)=>s+r.place,0)/results.length;
+  const avgR=results.reduce((s,r)=>s+r.round,0)/results.length;
+  devLog(`Balance (${results.length} bot games): win ${wr.toFixed(1)}% · avg place ${avgP.toFixed(1)} of 8 · avg game ${avgR.toFixed(1)} rounds${errs?` · ${errs} errored`:""}. Bot is mediocre — a human should beat these numbers.`);
+}
+
+/* dev events */
+$("devList").addEventListener("click",e=>{
+  const el=e.target.closest("[data-dk]");
+  if(!el)return;
+  editing={kind:el.dataset.dk,idx:+el.dataset.di};
+  const arr=editing.kind==="spell"?SPELLS:POOL;
+  writeForm(arr[editing.idx],editing.kind);
+  renderDevList();
+  devLog(`Editing ${arr[editing.idx].n}.`);
+});
+["fKind","fFx","fLr","fTrEv","fTrFx"].forEach(id=>$(id).addEventListener("change",()=>{syncFormVisibility();refreshPreview();}));
+["fName","fTier","fGlyph","fAtk","fHp","fTribe","fKwB","fKwW","fKwV","fLrV","fLrC","fLrA","fLrH","fCost","fAmt","fDesc","fTrA","fTrH","fTrC"]
+  .forEach(id=>$(id).addEventListener("input",refreshPreview));
+$("fArt").addEventListener("change",e=>{
+  const f=e.target.files[0];
+  if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>{editorImg=regAsset(r.result);refreshPreview();devLog("Art attached — Save to apply.");};
+  r.readAsDataURL(f);
+});
+$("fArtClear").onclick=()=>{editorImg=null;$("fArt").value="";refreshPreview();};
+[["Place","place"],["Attack","attack"],["Die","die"]].forEach(([suf,key])=>{
+  $("fSnd"+suf).addEventListener("change",e=>{
+    const f=e.target.files[0]; if(!f)return;
+    const r=new FileReader();
+    r.onload=()=>{editorSnd[key]=regAsset(r.result);devLog(`${suf} sound attached — Save to apply.`);};
+    r.readAsDataURL(f);
+  });
+  $("pSnd"+suf).onclick=()=>{if(editorSnd[key])playSnd(editorSnd[key]);else devLog(`No ${key} sound attached yet.`);};
+  $("xSnd"+suf).onclick=()=>{delete editorSnd[key];$("fSnd"+suf).value="";devLog(`${suf} sound cleared — Save to apply.`);};
+});
+$("btnMute").onclick=()=>{audioOn=!audioOn;$("btnMute").textContent=audioOn?"🔊":"🔇";renderSettings();};
+$("devSave").onclick=devSave;
+$("devDelete").onclick=devDelete;
+$("devDup").onclick=devDup;
+$("devNew").onclick=devNew;
+$("devExport").onclick=devExport;
+$("devImport").addEventListener("change",e=>{if(e.target.files[0])devImportFile(e.target.files[0]);e.target.value="";});
+$("devReset").onclick=devReset;
+$("devSim").onclick=()=>{devLog("Running 200 bot games…");setTimeout(()=>devBalanceSim(200),30);};
+
+/* ================= settings ================= */
+const SPEEDS=[{mul:1,label:"Quill (normal)"},{mul:0.55,label:"Blot (fast)"},{mul:0.3,label:"Splatter (blitz)"}];
+let speedIdx=0;
+function applyTheme(key){
+  themeKey=key;
+  if(document.body){if(key)document.body.dataset.theme=key;else delete document.body.dataset.theme;}
+  renderSettings();
+}
+function renderSettings(){
+  $("themeSwatches").innerHTML=THEMES.map(t=>
+    `<button class="swatch ${t.key===themeKey?"on":""}" data-theme="${t.key}"
+      style="background:linear-gradient(135deg,${t.paper} 50%,${t.ink} 50%)"><span>${t.name}</span></button>`).join("");
+  $("setSound").textContent=audioOn?"On 🔊":"Off 🔇";
+  $("setSpeed").textContent=SPEEDS[speedIdx].label;
+  $("setParallax").textContent=parallaxOn?"On":"Off";
+}
+$("themeSwatches").addEventListener("click",e=>{
+  const b=e.target.closest(".swatch");
+  if(b)applyTheme(b.dataset.theme);
+});
+$("setSound").onclick=()=>{audioOn=!audioOn;$("btnMute").textContent=audioOn?"🔊":"🔇";renderSettings();};
+$("setSpeed").onclick=()=>{speedIdx=(speedIdx+1)%SPEEDS.length;speedMul=SPEEDS[speedIdx].mul;renderSettings();};
+$("setParallax").onclick=()=>{parallaxOn=!parallaxOn;renderSettings();};
+$("setBack").onclick=()=>showScreen("menu");
+$("mSettings").onclick=()=>showScreen("settings");
+
+showScreen("menu");
+</script>
+</body>
+</html>
