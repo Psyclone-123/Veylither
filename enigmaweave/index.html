@@ -117,6 +117,57 @@
         }
         #pause-btn:hover { background: #62cdff; color: #000; }
 
+        /* Undo / Redo rewind arrows (top-centre during play) */
+        #undo-bar {
+            position: absolute;
+            left: 0;
+            top: 0;
+            transform: translateX(-50%);   /* centred on the JS-set left (hold box centre) */
+            display: none;
+            gap: 12px;
+            z-index: 6;
+            pointer-events: none;
+        }
+        #undo-bar.compact { gap: 9px; }
+        #undo-bar.compact .rewind-btn { width: 34px; height: 34px; font-size: 1rem; }
+        #undo-bar.compact .rewind-count { min-width: 14px; height: 14px; line-height: 14px; font-size: 0.55rem; bottom: -6px; right: -6px; }
+        .rewind-btn {
+            position: relative;
+            width: 46px;
+            height: 46px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(20, 15, 40, 0.8);
+            color: #62cdff;
+            border: 1px solid #62cdff;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1.4rem;
+            line-height: 1;
+            font-family: inherit;
+            pointer-events: auto;
+            transition: all 0.15s;
+        }
+        .rewind-btn:hover { background: #62cdff; color: #000; }
+        .rewind-btn.disabled { opacity: 0.28; pointer-events: none; }
+        .rewind-count {
+            position: absolute;
+            bottom: -7px;
+            right: -7px;
+            min-width: 17px;
+            height: 17px;
+            padding: 0 3px;
+            box-sizing: border-box;
+            border-radius: 9px;
+            background: #f271ff;
+            color: #000;
+            font-size: 0.62rem;
+            line-height: 17px;
+            text-align: center;
+            font-weight: bold;
+        }
+
         #pause-menu {
             position: absolute;
             inset: 0;
@@ -756,6 +807,12 @@
 
     <button id="pause-btn" onclick="pauseGame()" aria-label="Pause">⏸</button>
 
+    <!-- Undo / Redo rewind arrows -->
+    <div id="undo-bar">
+        <button id="undo-btn" class="rewind-btn disabled" onclick="undoMove()" aria-label="Undo">↶<span id="undo-count" class="rewind-count">0</span></button>
+        <button id="redo-btn" class="rewind-btn disabled" onclick="redoMove()" aria-label="Redo">↷</button>
+    </div>
+
     <!-- PAUSE MENU -->
     <div id="pause-menu">
         <div class="pause-inner">
@@ -997,6 +1054,18 @@
                 hold: '#ff5fa2', queue: '#ffa6d0', valid: '#3fd0a0', invalid: '#ff3d6e',
                 bg: 'radial-gradient(circle at top center, #3a1326 0%, #120308 100%)',
                 ink: '#241019'    // manga outline / screentone ink
+            },
+            {
+                // INDEPENDENCE: red/white/blue 4th-of-July skin. Every placement
+                // pops a small firework; a whiteout/blackout launches a full
+                // screen-filling fireworks show (see fireworks system below).
+                id: 'independence', name: 'INDEPENDENCE',
+                sfx: 'independence',   // launch-whistle + burst + crackle sounds
+                litCell: '#fff5f5', unlitCell: '#0a1230',
+                litGlow: '#ffffff', unlitGlow: '#4a7bff',
+                accent: '#ff3b4e', accent2: '#5b8dff',
+                hold: '#ff3b4e', queue: '#9db8ff', valid: '#ffffff', invalid: '#ff2d55',
+                bg: 'radial-gradient(circle at top center, #2a0f1c 0%, #0a1230 55%, #05060f 100%)'
             }
         ];
         let currentThemeIndex = 0;
@@ -1224,7 +1293,13 @@
             // it from feeling repetitive), plus hold and clear.
             jade: makeSfxSet(
                 'Jade/jade_place.wav', 'Jade/jade_place.wav',
-                'Jade/jade_hold.wav', 'Jade/jade_clear.wav', 0.75)
+                'Jade/jade_hold.wav', 'Jade/jade_clear.wav', 0.75),
+            // Independence: a rising launch-whistle into a burst (two variants)
+            // on place, a sparkly fizz on hold, and a grand multi-shell finale
+            // on a whiteout/blackout clear.
+            independence: makeSfxSet(
+                'Independencesfx/fw_place1.wav', 'Independencesfx/fw_place2.wav',
+                'Independencesfx/fw_hold.wav', 'Independencesfx/fw_clear.wav', 0.8)
         };
 
         // Active set follows the current skin; unknown/absent keys use default.
@@ -1361,6 +1436,7 @@
             fillQueue();
             clearMessage();
             document.getElementById('game-over').style.display = 'none';
+            resetUndo();                   // fresh game -> no rewind history
             checkGameOver();
         }
 
@@ -1455,6 +1531,7 @@
         function performPlacement(startRow, startCol, piece) {
             if (!piece) return;
             initAudio();
+            pushUndo();                    // snapshot pre-placement for rewind
             let blocksPlaced = 0;
             for (let r = 0; r < piece.length; r++) {
                 for (let c = 0; c < piece[r].length; c++) {
@@ -1485,6 +1562,20 @@
                     const vx = (Math.random() - 0.5) * 5;        // drifting wisps
                     const vy = -(7 + Math.random() * 7);          // strong rise = vaporize
                     injectFluid(px, py, col.r / 255, col.g / 255, col.b / 255, 550, 12, vx, vy);
+                }
+            }
+            // Independence skin: pop a small firework at the placed piece's
+            // centre. (Skipped if this placement also solves the board — the
+            // big fireworks show in checkWinCondition takes over instead.)
+            if (theme().id === 'independence') {
+                let sumR = 0, sumC = 0, n = 0;
+                for (let pr = 0; pr < piece.length; pr++)
+                    for (let pc = 0; pc < piece[pr].length; pc++)
+                        if (piece[pr][pc] === 1) { sumR += startRow + pr; sumC += startCol + pc; n++; }
+                if (n) {
+                    const fx = boardX + (sumC / n + 0.5) * cellSize;
+                    const fy = boardY + (sumR / n + 0.5) * cellSize;
+                    fireworkBurst(fx, fy);
                 }
             }
             score += (blocksPlaced * 10) * multiplier;
@@ -1538,6 +1629,9 @@
                 else if (skin === 'toxic') startFlood(FLOOD_TOXIC);
                 else if (skin === 'gold') startFlood(FLOOD_BEER);
                 else if (skin === 'jade') startCrystalize();
+                else if (skin === 'independence') bigFireworksShow();
+
+                resetUndo();               // a solve wipes the rewind history
 
                 // Board stays cleared — no scramble. Play continues on the solid
                 // board (any piece fits), and the next placement starts inverting
@@ -1549,6 +1643,7 @@
             if (isGameOver) return;
             isGameOver = true;
             document.getElementById('pause-btn').style.display = 'none';
+            showRewindBar(false);
             preview = null;
             playSound('place');
             haptic(HAPTICS.gameover);
@@ -1583,11 +1678,96 @@
             startPlay();
         }
 
+        // ==========================================
+        // UNDO / REDO  — rewind up to 3 moves. Every placement and hold pushes a
+        // full state snapshot first; the stacks RESET on every board clear, so
+        // you can never rewind past a solve.
+        // ==========================================
+        const MAX_UNDO = 3;
+        let undoStack = [];
+        let redoStack = [];
+
+        function snapshotState() {
+            return {
+                grid: grid.map(row => row.slice()),
+                score: score,
+                multiplier: multiplier,
+                queue: queue.map(p => p.map(r => r.slice())),
+                heldPiece: heldPiece ? heldPiece.map(r => r.slice()) : null,
+                canHold: canHold
+            };
+        }
+        function restoreState(s) {
+            grid = s.grid.map(row => row.slice());
+            score = s.score;
+            multiplier = s.multiplier;
+            queue = s.queue.map(p => p.map(r => r.slice()));
+            heldPiece = s.heldPiece ? s.heldPiece.map(r => r.slice()) : null;
+            canHold = s.canHold;
+            preview = null;
+        }
+        // Record the pre-action state. Call BEFORE mutating (placement / hold).
+        function pushUndo() {
+            undoStack.push(snapshotState());
+            if (undoStack.length > MAX_UNDO) undoStack.shift();
+            redoStack = [];                 // a fresh action invalidates redo
+            updateRewindUI();
+        }
+        function resetUndo() {              // on new game and after a clear
+            undoStack = [];
+            redoStack = [];
+            updateRewindUI();
+        }
+        function undoMove() {
+            if (appScreen !== 'playing' || isPaused || !undoStack.length) return;
+            redoStack.push(snapshotState());
+            if (redoStack.length > MAX_UNDO) redoStack.shift();
+            restoreState(undoStack.pop());
+            isGameOver = false;             // rewinding can rescue a game over
+            document.getElementById('game-over').style.display = 'none';
+            haptic(HAPTICS.hold);
+            updateRewindUI();
+        }
+        function redoMove() {
+            if (appScreen !== 'playing' || isPaused || !redoStack.length) return;
+            undoStack.push(snapshotState());
+            if (undoStack.length > MAX_UNDO) undoStack.shift();
+            restoreState(redoStack.pop());
+            haptic(HAPTICS.hold);
+            setTimeout(checkGameOver, 50);
+            updateRewindUI();
+        }
+        function updateRewindUI() {
+            const u = document.getElementById('undo-btn');
+            const r = document.getElementById('redo-btn');
+            const c = document.getElementById('undo-count');
+            if (u) u.classList.toggle('disabled', undoStack.length === 0);
+            if (r) r.classList.toggle('disabled', redoStack.length === 0);
+            if (c) c.textContent = undoStack.length;
+        }
+        function showRewindBar(v) {
+            const bar = document.getElementById('undo-bar');
+            if (!bar) return;
+            bar.style.display = v ? 'flex' : 'none';
+            if (v) positionRewindBar();
+        }
+        // Anchor the arrow bar directly under the hold tray (recomputed on resize).
+        function positionRewindBar() {
+            const bar = document.getElementById('undo-bar');
+            if (!bar || typeof holdBoxX === 'undefined') return;
+            bar.classList.toggle('compact', isPortrait);
+            bar.style.left = (holdBoxX + holdBoxSize / 2) + 'px';
+            bar.style.top  = (holdBoxY + holdBoxSize + (isPortrait ? 2 : 14)) + 'px';
+        }
+        window.undoMove = undoMove;
+        window.redoMove = redoMove;
+
         // ===== PAUSE MENU =====
         function pauseGame() {
             if (appScreen !== 'playing' || isGameOver || isPaused) return;
             isPaused = true;
             document.getElementById('pause-btn').style.display = 'none';
+            showRewindBar(false);
             updatePauseMusicLabel();
             document.getElementById('pause-menu').style.display = 'flex';
             haptic(HAPTICS.hold);
@@ -1598,6 +1778,7 @@
             document.getElementById('pause-menu').style.display = 'none';
             if (appScreen === 'playing' && !isGameOver) {
                 document.getElementById('pause-btn').style.display = 'flex';
+                showRewindBar(true);
             }
         }
 
@@ -1616,6 +1797,7 @@
             if (queue.length === 0) return;
 
             initAudio();
+            pushUndo();                    // snapshot pre-hold for rewind
 
             const current = queue[0];
 
@@ -1823,6 +2005,7 @@
                 queueStartX = boardX + boardPixelSize + 36;
                 queueItemY = boardY + 8;
             }
+            if (typeof positionRewindBar === 'function') positionRewindBar();
         }
         window.addEventListener('resize', resizeGame);
         window.addEventListener('orientationchange', () => setTimeout(resizeGame, 100));
@@ -2396,6 +2579,143 @@
             ctx.restore();
         }
 
+        // --- Fireworks (Independence skin) ---------------------------------
+        // Two modes share one particle array:
+        //   * a small burst on every piece placement (fireworkBurst)
+        //   * a full-screen show on a whiteout/blackout (bigFireworksShow),
+        //     which launches rockets that climb and explode across the canvas.
+        // Particles are drawn additively (like the flame/crystal effects) so the
+        // sparks glow. No other skin ever spawns these.
+        const FIREWORK_COLORS = [
+            [255, 59, 78],    // red
+            [255, 255, 255],  // white
+            [91, 141, 255],   // blue
+            [255, 209, 102]   // gold accent
+        ];
+        let fireworks = [];   // exploded sparks
+        let rockets = [];     // climbing shells (big show only)
+
+        function fireworkSparks(x, y, count, speed, colorArr, life) {
+            for (let i = 0; i < count; i++) {
+                const ang = Math.random() * Math.PI * 2;
+                const spd = speed * (0.35 + Math.random() * 0.8);
+                const col = colorArr || FIREWORK_COLORS[(Math.random() * FIREWORK_COLORS.length) | 0];
+                fireworks.push({
+                    x: x, y: y,
+                    vx: Math.cos(ang) * spd,
+                    vy: Math.sin(ang) * spd,
+                    life: 1,
+                    // slower decay -> sparks linger longer and read more clearly
+                    decay: (0.006 + Math.random() * 0.009) * (1 / (life || 1)),
+                    size: 3.2 + Math.random() * 4.0,       // bigger, brighter sparks
+                    r: col[0], g: col[1], b: col[2],
+                    grav: 0.045 + Math.random() * 0.03
+                });
+            }
+        }
+
+        // Launch a rocket that climbs from (x, y) and explodes at its apex.
+        // Placement rockets use small bursts; the solve show uses big ones. Each
+        // rocket carries its own explosion config so updateFireworks stays generic.
+        function launchRocketFrom(x, y, opts) {
+            opts = opts || {};
+            const col = FIREWORK_COLORS[(Math.random() * FIREWORK_COLORS.length) | 0];
+            rockets.push({
+                x: x, y: y,
+                vy: opts.vy != null ? opts.vy : -(11 + Math.random() * 3),
+                targetY: y - (opts.rise != null ? opts.rise : (320 + Math.random() * 160)),
+                r: col[0], g: col[1], b: col[2],
+                count:  opts.count  || 46, speed:  opts.speed  || 5.4,
+                count2: opts.count2 || 26, speed2: opts.speed2 || 3.0,
+                flash:  opts.flash  || 16
+            });
+        }
+
+        // Small rocket that shoots up from a just-placed piece.
+        function fireworkBurst(x, y) {
+            launchRocketFrom(x, y);
+        }
+
+        // Full-screen celebration: rockets launch from the bottom over ~1.8s,
+        // each climbing to a random height then exploding into a big burst.
+        let bigShowTimer = 0;
+        function bigFireworksShow() {
+            bigShowTimer = 160;   // ~2.7s worth of launches (frames)
+            // a big immediate volley so it kicks off instantly
+            for (let i = 0; i < 6; i++) launchRocket();
+        }
+        function launchRocket() {
+            // Solve-show rocket: climbs from the bottom of the screen and bursts big.
+            launchRocketFrom(cw * (0.12 + Math.random() * 0.76), ch + 8, {
+                vy: -(ch * (0.010 + Math.random() * 0.006)),
+                rise: ch * (0.5 + Math.random() * 0.32),
+                count: 110, speed: 8.5, count2: 60, speed2: 5.0, flash: 26
+            });
+        }
+        function updateFireworks() {
+            // launch cadence for the big show
+            if (bigShowTimer > 0) {
+                bigShowTimer--;
+                if (bigShowTimer % 5 === 0) launchRocket();   // faster cadence
+            }
+
+            // climbing rockets (draw a glowing head + short trail)
+            if (rockets.length) {
+                ctx.save();
+                ctx.globalCompositeOperation = 'lighter';
+                for (let i = rockets.length - 1; i >= 0; i--) {
+                    const rk = rockets[i];
+                    rk.x += (rk.vx || 0);
+                    rk.y += rk.vy;
+                    rk.vy += 0.12;   // gravity slows the climb
+                    // sparky exhaust trail streaming out the bottom as it climbs
+                    fireworks.push({ x: rk.x + (Math.random() - 0.5) * 3, y: rk.y + 5,
+                        vx: (Math.random() - 0.5) * 0.6, vy: 0.4 + Math.random() * 0.5,
+                        life: 1, decay: 0.09, size: 2.6, r: 255, g: 216, b: 140, grav: 0.02 });
+                    const head = ctx.createRadialGradient(rk.x, rk.y, 0, rk.x, rk.y, 7);
+                    head.addColorStop(0, 'rgba(255,255,255,0.98)');
+                    head.addColorStop(0.4, `rgba(${rk.r},${rk.g},${rk.b},0.9)`);
+                    head.addColorStop(1, `rgba(${rk.r},${rk.g},${rk.b},0)`);
+                    ctx.fillStyle = head;
+                    ctx.beginPath();
+                    ctx.arc(rk.x, rk.y, 7, 0, Math.PI * 2);
+                    ctx.fill();
+                    // explode at apex / target — burst size set per rocket
+                    if (rk.y <= rk.targetY || rk.vy >= 0) {
+                        fireworkSparks(rk.x, rk.y, rk.count, rk.speed, [rk.r, rk.g, rk.b], 1.6);
+                        fireworkSparks(rk.x, rk.y, rk.count2, rk.speed2, null, 1.6);
+                        fireworks.push({ x: rk.x, y: rk.y, vx: 0, vy: 0, life: 1,
+                            decay: 0.04, size: rk.flash, r: 255, g: 255, b: 255, grav: 0, flash: true });
+                        rockets.splice(i, 1);
+                    }
+                }
+                ctx.restore();
+            }
+
+            if (!fireworks.length) return;
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            for (let i = fireworks.length - 1; i >= 0; i--) {
+                const p = fireworks[i];
+                p.x += p.vx; p.y += p.vy;
+                p.vy += p.grav;
+                p.vx *= 0.985; p.vy *= 0.985;
+                p.life -= p.decay;
+                if (p.life <= 0) { fireworks.splice(i, 1); continue; }
+                const rad = p.size * (p.flash ? (1 + (1 - p.life) * 2.4) : 1.5) * (0.6 + p.life);
+                const a = Math.min(1, p.life * (p.flash ? 1.0 : 1.0));
+                const grd = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, rad);
+                grd.addColorStop(0, `rgba(255,255,255,${a})`);       // hot white core
+                grd.addColorStop(0.35, `rgba(${p.r},${p.g},${p.b},${a})`);
+                grd.addColorStop(1, `rgba(${p.r},${p.g},${p.b},0)`);
+                ctx.fillStyle = grd;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, rad, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+        }
+
         function render() {
             stepPhysics(0.095);
 
@@ -2431,6 +2751,7 @@
             updateFlames();
             updateFlood();
             updateCrystals();
+            updateFireworks();
 
             requestAnimationFrame(render);
         }
@@ -2438,6 +2759,17 @@
         // Keyboard support for convenience (space = hold)
         window.addEventListener('keydown', (e) => {
             const k = e.key.toLowerCase();
+            // Ctrl/Cmd+Z = undo, Ctrl/Cmd+Y or Ctrl/Cmd+Shift+Z = redo.
+            if ((e.ctrlKey || e.metaKey) && k === 'z') {
+                e.preventDefault();
+                if (e.shiftKey) redoMove(); else undoMove();
+                return;
+            }
+            if ((e.ctrlKey || e.metaKey) && k === 'y') {
+                e.preventDefault();
+                redoMove();
+                return;
+            }
             // Esc / P toggles the pause menu while playing.
             if (appScreen === 'playing' && !isGameOver && (e.key === 'Escape' || k === 'p')) {
                 e.preventDefault();
@@ -2621,6 +2953,7 @@
             document.getElementById('credits-panel').style.display = 'none';
             document.getElementById('pause-menu').style.display = 'none';
             document.getElementById('pause-btn').style.display = 'none';
+            showRewindBar(false);
             isPaused = false;
             document.getElementById('home-screen').style.display = 'flex';
             document.getElementById('ui-layer').style.display = 'none';
@@ -2642,6 +2975,7 @@
             document.getElementById('message').style.display = 'block';
             document.getElementById('pause-menu').style.display = 'none';
             document.getElementById('pause-btn').style.display = 'flex';
+            showRewindBar(true);
             isPaused = false;
             appScreen = 'playing';
             initGame();
