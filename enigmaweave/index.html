@@ -2200,6 +2200,7 @@
             // Preview overlay
             if (preview && preview.piece) {
                 const p = preview.piece;
+                const indep = theme().id === 'independence';
                 const color = preview.valid ? theme().valid : theme().invalid;
                 ctx.save();
                 ctx.globalAlpha = preview.valid ? 0.75 : 0.55;
@@ -2212,37 +2213,57 @@
                             if (tr >= 0 && tr < BOARD_SIZE && tc >= 0 && tc < BOARD_SIZE) {
                                 const px = boardX + tc * cellSize;
                                 const py = boardY + tr * cellSize;
-                                ctx.fillStyle = color;
-                                ctx.fillRect(px + 2, py + 2, cellSize - 4, cellSize - 4);
+                                if (indep) {
+                                    // Independence: adaptive contrast — blue over
+                                    // white cells, white over navy cells. Invalid
+                                    // stays red so the "can't place" cue holds.
+                                    // Sized + bordered to conform to the block.
+                                    const hl = !preview.valid ? theme().invalid
+                                             : (grid[tr][tc] === 1 ? '#2b5cff' : '#ffffff');
+                                    ctx.fillStyle = hl;
+                                    ctx.fillRect(px + 1.5, py + 1.5, cellSize - 3, cellSize - 3);
+                                    const prevA = ctx.globalAlpha;
+                                    ctx.globalAlpha = 1;
+                                    ctx.strokeStyle = hl;
+                                    ctx.lineWidth = 2;
+                                    ctx.strokeRect(px + 1.5, py + 1.5, cellSize - 3, cellSize - 3);
+                                    ctx.globalAlpha = prevA;
+                                } else {
+                                    ctx.fillStyle = color;
+                                    ctx.fillRect(px + 2, py + 2, cellSize - 4, cellSize - 4);
+                                }
                             }
                         }
                     }
                 }
                 ctx.restore();
 
-                // Outline only the covered in-bounds area
-                let minR = 99, minC = 99, maxR = -1, maxC = -1;
-                for (let r = 0; r < p.length; r++) {
-                    for (let c = 0; c < p[0].length; c++) {
-                        if (p[r][c] === 1) {
-                            const tr = preview.startRow + r;
-                            const tc = preview.startCol + c;
-                            if (tr >= 0 && tr < BOARD_SIZE && tc >= 0 && tc < BOARD_SIZE) {
-                                minR = Math.min(minR, tr); minC = Math.min(minC, tc);
-                                maxR = Math.max(maxR, tr); maxC = Math.max(maxC, tc);
+                // Bounding-box outline (other skins). Independence uses the
+                // per-cell borders above, which conform to the piece shape.
+                if (!indep) {
+                    let minR = 99, minC = 99, maxR = -1, maxC = -1;
+                    for (let r = 0; r < p.length; r++) {
+                        for (let c = 0; c < p[0].length; c++) {
+                            if (p[r][c] === 1) {
+                                const tr = preview.startRow + r;
+                                const tc = preview.startCol + c;
+                                if (tr >= 0 && tr < BOARD_SIZE && tc >= 0 && tc < BOARD_SIZE) {
+                                    minR = Math.min(minR, tr); minC = Math.min(minC, tc);
+                                    maxR = Math.max(maxR, tr); maxC = Math.max(maxC, tc);
+                                }
                             }
                         }
                     }
-                }
-                if (maxR >= 0) {
-                    ctx.strokeStyle = color;
-                    ctx.lineWidth = 2;
-                    ctx.strokeRect(
-                        boardX + minC * cellSize + 1.5,
-                        boardY + minR * cellSize + 1.5,
-                        (maxC - minC + 1) * cellSize - 3,
-                        (maxR - minR + 1) * cellSize - 3
-                    );
+                    if (maxR >= 0) {
+                        ctx.strokeStyle = color;
+                        ctx.lineWidth = 2;
+                        ctx.strokeRect(
+                            boardX + minC * cellSize + 1.5,
+                            boardY + minR * cellSize + 1.5,
+                            (maxC - minC + 1) * cellSize - 3,
+                            (maxR - minR + 1) * cellSize - 3
+                        );
+                    }
                 }
             }
 
