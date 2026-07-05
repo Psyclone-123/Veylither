@@ -43,6 +43,13 @@
   .msg{font-size:.75rem;color:var(--good);min-height:18px;letter-spacing:1px;margin-top:8px;}
   .hint{font-size:.7rem;color:var(--sub);line-height:1.5;margin-top:10px;}
   a.homelink{color:var(--sub);font-size:.72rem;text-decoration:none;border-bottom:1px dashed var(--sub);}
+  .snd-row{border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:10px;}
+  .snd-head{font-size:.85rem;margin-bottom:8px;}
+  .snd-head .snd-name{color:var(--sub);font-size:.72rem;margin-left:8px;}
+  .snd-ctrls{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;}
+  .snd-ctrls label{margin:0;display:flex;align-items:center;gap:6px;font-size:.68rem;color:var(--sub);text-transform:none;letter-spacing:0;}
+  .snd-ctrls input[type=range]{width:90px;accent-color:var(--accent);}
+  .snd-ctrls label span{color:var(--txt);min-width:34px;}
 </style>
 </head>
 <body>
@@ -91,6 +98,12 @@
     <h2 style="margin-top:20px;">Saved skins</h2>
     <div class="saved" id="saved"></div>
   </div>
+
+  <div class="card" style="grid-column:1/-1">
+    <h2>Sound effects</h2>
+    <div id="sounds"></div>
+    <div class="hint">Each sound: upload a clip, then tune volume, base pitch, random pitch variation (so repeats vary), and a start delay (ms). Test plays it with your settings.</div>
+  </div>
 </div>
 
 <input type="file" id="fileInput" accept="image/*,video/mp4,image/gif" style="display:none">
@@ -119,8 +132,10 @@ function blankSkin(){
   s.litGlow='#ffffff'; s.unlitGlow=s.accent; s.hold=s.accent2; s.queue=s.accent;
   s.bg='radial-gradient(circle at top center, #2b114d 0%, #0b0813 100%)';
   s.litImg=null; s.unlitImg=null; s.bgImg=null; s.clearMedia=null;
+  s.sounds={ place:sndDef(0.75,0.08), hold:sndDef(0.75,0), clear:sndDef(0.85,0) };
   return s;
 }
+function sndDef(vol,pv){ return {src:null,name:'',vol:vol,pitch:1,pitchVar:pv,delay:0}; }
 
 /* ---------- build colour pickers ---------- */
 const colorsEl=document.getElementById('colors');
@@ -216,6 +231,8 @@ function loadEditor(){
   document.getElementById('name').value=skin.name||'Custom Skin';
   colorsEl.querySelectorAll('input[type=color]').forEach(i=>{ if(skin[i.dataset.k])i.value=skin[i.dataset.k]; });
   ['litImg','unlitImg','bgImg','clearMedia'].forEach(refreshDrop);
+  if(!skin.sounds)skin.sounds={}; SND_SLOTS.forEach(([k])=>{if(!skin.sounds[k])skin.sounds[k]=sndDef(0.75,0);});
+  buildSounds();
   render();
 }
 
@@ -231,6 +248,41 @@ async function refreshSaved(){
     const rm=document.createElement('button'); rm.className='sm'; rm.textContent='✕'; rm.style.borderColor='#ff6b6b'; rm.style.color='#ff6b6b'; rm.onclick=async()=>{await delSkin(s.id); refreshSaved();};
     row.appendChild(ed); row.appendChild(rm); el.appendChild(row);
   });
+}
+
+/* ---------- sound effects (advanced) ---------- */
+const SND_SLOTS=[['place','Place (piece)'],['hold','Hold'],['clear','Clear / black-out']];
+const sndInput=document.createElement('input'); sndInput.type='file'; sndInput.accept='audio/*'; let sndTarget=null;
+sndInput.addEventListener('change',e=>{const f=e.target.files[0]; if(!f||!sndTarget)return; const rd=new FileReader(); rd.onload=()=>{skin.sounds[sndTarget].src=rd.result; skin.sounds[sndTarget].name=f.name; buildSounds(); msg('Loaded '+f.name);}; rd.readAsDataURL(f); e.target.value='';});
+function buildSounds(){
+  const el=document.getElementById('sounds'); el.innerHTML='';
+  SND_SLOTS.forEach(([key,label])=>{
+    const s=skin.sounds[key];
+    const row=document.createElement('div'); row.className='snd-row';
+    row.innerHTML=`<div class="snd-head"><b>${label}</b><span class="snd-name">${s.src?(s.name||'clip set'):'no clip'}</span></div>
+      <div class="snd-ctrls">
+        <button class="sm" data-up="${key}">⭱ Upload</button>
+        <button class="sm" data-test="${key}">▶ Test</button>
+        <button class="sm" data-clr="${key}" style="border-color:#ff6b6b;color:#ff6b6b">✕</button>
+        <label>Vol <input type="range" min="0" max="1" step="0.05" value="${s.vol}" data-p="vol" data-k="${key}"><span>${s.vol}</span></label>
+        <label>Pitch <input type="range" min="0.5" max="2" step="0.05" value="${s.pitch}" data-p="pitch" data-k="${key}"><span>${s.pitch}x</span></label>
+        <label>Pitch± <input type="range" min="0" max="0.4" step="0.02" value="${s.pitchVar}" data-p="pitchVar" data-k="${key}"><span>${Math.round(s.pitchVar*100)}%</span></label>
+        <label>Delay <input type="range" min="0" max="800" step="20" value="${s.delay}" data-p="delay" data-k="${key}"><span>${s.delay}ms</span></label>
+      </div>`;
+    el.appendChild(row);
+  });
+  el.querySelectorAll('input[type=range]').forEach(inp=>inp.addEventListener('input',e=>{
+    const k=e.target.dataset.k,p=e.target.dataset.p,v=parseFloat(e.target.value); skin.sounds[k][p]=v;
+    e.target.nextElementSibling.textContent=(p==='delay')?v+'ms':(p==='pitchVar')?Math.round(v*100)+'%':(p==='pitch')?v+'x':v;
+  }));
+  el.querySelectorAll('[data-up]').forEach(b=>b.addEventListener('click',()=>{sndTarget=b.dataset.up; sndInput.click();}));
+  el.querySelectorAll('[data-clr]').forEach(b=>b.addEventListener('click',()=>{skin.sounds[b.dataset.clr].src=null; skin.sounds[b.dataset.clr].name=''; buildSounds();}));
+  el.querySelectorAll('[data-test]').forEach(b=>b.addEventListener('click',()=>testSound(b.dataset.test)));
+}
+function testSound(key){
+  const s=skin.sounds[key]; if(!s.src){msg('No '+key+' clip uploaded');return;}
+  setTimeout(()=>{ try{ const a=new Audio(s.src); a.volume=s.vol; a.preservesPitch=false; a.mozPreservesPitch=false; a.webkitPreservesPitch=false;
+    a.playbackRate=Math.max(0.25, s.pitch*(1+(Math.random()*2-1)*s.pitchVar)); a.play().catch(()=>{}); }catch(e){} }, s.delay||0);
 }
 
 loadEditor(); refreshSaved();
