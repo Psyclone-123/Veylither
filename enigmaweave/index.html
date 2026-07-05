@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EnigmaWeave - Grid Inverter</title>
+    <title>Morphed - Grid Inverter</title>
     <style>
         body, html {
             margin: 0;
@@ -446,6 +446,53 @@
             margin-top: 4px;
         }
 
+        /* ===== SPARKS CURRENCY ===== */
+        .skin-owned {
+            font-size: 0.6rem;
+            color: #9db8ff;
+            letter-spacing: 2px;
+            margin-top: 4px;
+        }
+        .skin-price {
+            font-size: 0.68rem;
+            color: #ffd54a;
+            letter-spacing: 1px;
+            margin-top: 4px;
+            font-weight: 800;
+        }
+        .skin-card.locked .skin-swatch { filter: grayscale(0.4); opacity: 0.55; }
+        .spark-balance {
+            color: #ffd54a;
+            font-weight: 800;
+            letter-spacing: 1px;
+            margin-bottom: 6px;
+            font-size: 0.95rem;
+            text-shadow: 0 0 8px rgba(255, 213, 74, 0.5);
+        }
+        .home-sparks {
+            color: #ffd54a;
+            font-weight: 700;
+            letter-spacing: 1px;
+            font-size: 0.85rem;
+            margin-top: 6px;
+            text-shadow: 0 0 8px rgba(255, 213, 74, 0.45);
+        }
+        .skin-msg {
+            min-height: 16px;
+            color: #ff6b6b;
+            font-size: 0.75rem;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+        .sparks-earned {
+            color: #ffd54a;
+            font-weight: 700;
+            letter-spacing: 1px;
+            margin: 6px 0 14px;
+            font-size: 0.9rem;
+            text-shadow: 0 0 8px rgba(255, 213, 74, 0.45);
+        }
+
         /* ===== SETTINGS ===== */
         .settings-row {
             display: flex;
@@ -706,7 +753,7 @@
 
     <div id="ui-layer">
         <div class="arcade-container">
-            <h1 class="arcade-header">ENIGMAWEAVE</h1>
+            <h1 class="arcade-header">MORPHED</h1>
         </div>
     </div>
 
@@ -717,6 +764,7 @@
         <h2 class="neon-text">GAME OVER</h2>
         <div class="game-over-subtitle">NO MORE MOVES POSSIBLE</div>
         <p>Final Score: <span id="final-score">0</span></p>
+        <div id="sparks-earned" class="sparks-earned"></div>
         <div id="lb-entry" style="display:none;">
             <div class="lb-newhigh">★ NEW HIGH SCORE ★</div>
             <input id="lb-name" class="lb-input" maxlength="12" placeholder="ENTER NAME" autocomplete="off" onkeydown="if(event.key==='Enter')submitScore()" />
@@ -731,7 +779,8 @@
     <!-- HOME SCREEN -->
     <div id="home-screen">
         <div class="home-title-wrap">
-            <h1 class="home-title">ENIGMAWEAVE</h1>
+            <h1 class="home-title">MORPHED</h1>
+            <div class="home-sparks">✦ <span class="spark-balance-val">0</span> Sparks</div>
         </div>
         <div class="home-menu">
             <button class="home-btn primary" onclick="startPlay()">▶ PLAY</button>
@@ -744,7 +793,7 @@
         </div>
         <div class="home-footer">
             <button class="credits-link" onclick="openCredits()">CREDITS</button>
-            <div class="copyright">&copy; 2026 EnigmaWeave</div>
+            <div class="copyright">&copy; 2026 Morphed</div>
         </div>
     </div>
 
@@ -752,6 +801,8 @@
     <div id="skins-panel">
         <div class="panel-inner">
             <h2 class="panel-title">SKINS</h2>
+            <div class="spark-balance">✦ <span class="spark-balance-val">0</span> Sparks</div>
+            <div id="skin-msg" class="skin-msg"></div>
             <div id="skin-grid" class="skin-grid"></div>
             <button class="home-btn back-btn" onclick="showHome()">← BACK</button>
         </div>
@@ -800,7 +851,7 @@
                     <span class="credit-name">Veylither</span>
                 </div>
             </div>
-            <div class="credit-copyright">&copy; 2026 EnigmaWeave. All rights reserved.</div>
+            <div class="credit-copyright">&copy; 2026 Morphed. All rights reserved.</div>
             <button class="home-btn back-btn" onclick="showHome()">← BACK</button>
         </div>
     </div>
@@ -966,7 +1017,7 @@
         window.addEventListener('touchmove', handleTouchSwirl, {passive: true});
 
         // ==========================================
-        // 2. ENIGMAWEAVE GAME (gameplay + UI from EnigmaWeave.html)
+        // 2. MORPHED GAME (gameplay + UI from Morphed.html)
         // ==========================================
         const gameCanvas = document.getElementById('game-canvas');
         const ctx = gameCanvas.getContext('2d');
@@ -1080,6 +1131,105 @@
         function setTheme(i) {
             currentThemeIndex = i;
             applyThemeBackground();
+            try { localStorage.setItem('ew_skin', THEMES[i].id); } catch (e) {}
+        }
+        // Restore the last-equipped skin (only if the player still owns it).
+        function restoreEquippedSkin() {
+            let id = null;
+            try { id = localStorage.getItem('ew_skin'); } catch (e) {}
+            if (!id) return;
+            const idx = THEMES.findIndex(t => t.id === id);
+            if (idx >= 0 && isOwned(id)) currentThemeIndex = idx;
+        }
+
+        // ==========================================
+        // SPARKS CURRENCY + SKIN OWNERSHIP
+        // Sparks are earned at the end of each run (scaled by final score) and
+        // spent to unlock premium skins. Balance + owned skins persist in
+        // localStorage. Cyber and Vapor are free; every other skin has a price.
+        // NOTE: this is client-side for now — fine for an earn-by-play economy,
+        // but real-money Spark purchases will need server-side validation later.
+        // ==========================================
+        const SPARK_PRICES = {         // skin id -> cost (0 = free / always owned)
+            cyber: 0, vapor: 0,
+            toxic: 150, gold: 200, jade: 250, ember: 300, kawaii: 400, independence: 500
+        };
+        const FREE_SKINS = ['cyber', 'vapor'];
+        const SPARKS_PER_SCORE = 0.02; // 1 Spark per 50 points of final score
+        const LS_SPARKS = 'ew_sparks';
+        const LS_OWNED  = 'ew_owned';
+
+        function loadSparks() {
+            let v = 0;
+            try { v = parseInt(localStorage.getItem(LS_SPARKS), 10); } catch (e) {}
+            return Number.isFinite(v) ? v : 0;
+        }
+        function saveSparks() { try { localStorage.setItem(LS_SPARKS, String(sparks)); } catch (e) {} }
+        let sparks = loadSparks();
+
+        function loadOwned() {
+            let arr = [];
+            try { arr = JSON.parse(localStorage.getItem(LS_OWNED)) || []; } catch (e) {}
+            if (!Array.isArray(arr)) arr = [];
+            FREE_SKINS.forEach(id => { if (!arr.includes(id)) arr.push(id); });
+            return arr;
+        }
+        function saveOwned() { try { localStorage.setItem(LS_OWNED, JSON.stringify(ownedSkins)); } catch (e) {} }
+        let ownedSkins = loadOwned();
+        let runSparksAwarded = 0;      // high-water mark of Sparks paid out this run
+
+        function skinPrice(id) { return SPARK_PRICES[id] || 0; }
+        function isOwned(id)   { return skinPrice(id) === 0 || ownedSkins.includes(id); }
+
+        function updateSparkDisplays() {
+            const s = sparks.toLocaleString();
+            document.querySelectorAll('.spark-balance-val').forEach(el => { el.textContent = s; });
+        }
+        function addSparks(n) { sparks += n; saveSparks(); updateSparkDisplays(); }
+
+        // Award Sparks at end of run. Uses a per-run high-water mark so undoing
+        // out of a game over and dying again can't double-pay for the same score.
+        function awardRunSparks(finalScore) {
+            const total = Math.floor(Math.max(0, finalScore) * SPARKS_PER_SCORE);
+            const earned = Math.max(0, total - runSparksAwarded);
+            runSparksAwarded = Math.max(runSparksAwarded, total);
+            if (earned > 0) addSparks(earned);
+            return earned;
+        }
+
+        function showSkinMsg(t) {
+            const el = document.getElementById('skin-msg');
+            if (!el) return;
+            el.textContent = t;
+            clearTimeout(el._t);
+            el._t = setTimeout(() => { el.textContent = ''; }, 1800);
+        }
+
+        // Buy a skin with Sparks. Returns true if it's now owned.
+        function buySkin(id) {
+            if (isOwned(id)) return true;
+            const cost = skinPrice(id);
+            if (sparks < cost) {
+                showSkinMsg('Not enough Sparks — need ' + cost.toLocaleString());
+                haptic(HAPTICS.invalid);
+                return false;
+            }
+            sparks -= cost; saveSparks();
+            ownedSkins.push(id); saveOwned();
+            updateSparkDisplays();
+            showSkinMsg('Unlocked ' + THEMES.find(t => t.id === id).name + '!');
+            haptic(HAPTICS.clear);
+            return true;
+        }
+
+        // Skins-grid click: buy if locked (and affordable), then equip if owned.
+        function chooseSkin(i) {
+            const id = THEMES[i].id;
+            if (!isOwned(id)) {
+                if (!buySkin(id)) { buildSkinList(); return; }
+            }
+            setTheme(i);
+            buildSkinList();
         }
 
         // All pieces available immediately (score-based game, no levels)
@@ -1411,7 +1561,7 @@
         }
 
         // ==========================================
-        // Core Game Logic (EnigmaWeave rules)
+        // Core Game Logic (Morphed rules)
         // ==========================================
         function initGame() {
             grid = [];
@@ -1433,6 +1583,7 @@
             flood = null;
             crystals = null;
 
+            runSparksAwarded = 0;          // fresh run -> Sparks payout resets
             fillQueue();
             clearMessage();
             document.getElementById('game-over').style.display = 'none';
@@ -1479,7 +1630,7 @@
             document.getElementById('message').innerText = '';
         }
 
-        // EnigmaWeave placement rule: all covered cells must be the same color
+        // Morphed placement rule: all covered cells must be the same color
         function canPlace(startRow, startCol, piece) {
             if (!piece) return false;
             let requiredColor = null;
@@ -1648,6 +1799,9 @@
             playSound('place');
             haptic(HAPTICS.gameover);
             document.getElementById('final-score').innerText = score;
+            const earned = awardRunSparks(score);
+            const se = document.getElementById('sparks-earned');
+            if (se) se.innerHTML = `+${earned.toLocaleString()} ✦ Sparks &nbsp;·&nbsp; Balance ${sparks.toLocaleString()}`;
             document.getElementById('game-over').style.display = 'block';
             setupGameOverEntry(score);
             // Burst of red fluid behind the screen for drama
@@ -1792,7 +1946,7 @@
             if (b) b.innerText = isMusicPlaying ? '♪ MUSIC: ON' : '♪ MUSIC: OFF';
         }
 
-        // Hold logic (matches EnigmaWeave)
+        // Hold logic (matches Morphed)
         function holdCurrentPiece() {
             if (queue.length === 0) return;
 
@@ -3014,12 +3168,19 @@
         }
 
         function buildSkinList() {
+            updateSparkDisplays();
             const grid = document.getElementById('skin-grid');
             grid.innerHTML = '';
             THEMES.forEach((th, i) => {
+                const owned = isOwned(th.id);
+                const active = (i === currentThemeIndex);
                 const card = document.createElement('div');
-                card.className = 'skin-card' + (i === currentThemeIndex ? ' selected' : '');
-                card.onclick = () => { setTheme(i); buildSkinList(); };
+                card.className = 'skin-card' + (active ? ' selected' : '') + (owned ? '' : ' locked');
+                card.onclick = () => chooseSkin(i);
+                let footer;
+                if (active) footer = '<div class="skin-active">ACTIVE</div>';
+                else if (owned) footer = '<div class="skin-owned">OWNED</div>';
+                else footer = `<div class="skin-price">✦ ${skinPrice(th.id).toLocaleString()}</div>`;
                 card.innerHTML = `
                     <div class="skin-swatch">
                         <span class="sw" style="background:${th.litCell};box-shadow:0 0 10px ${th.litGlow}"></span>
@@ -3028,7 +3189,7 @@
                         <span class="sw" style="background:${th.accent2};box-shadow:0 0 10px ${th.accent2}"></span>
                     </div>
                     <div class="skin-name" style="color:${th.accent}">${th.name}</div>
-                    ${i === currentThemeIndex ? '<div class="skin-active">ACTIVE</div>' : ''}
+                    ${footer}
                 `;
                 grid.appendChild(card);
             });
@@ -3053,6 +3214,8 @@
         };
 
         // Boot: start on home screen with fluid running
+        restoreEquippedSkin();
+        updateSparkDisplays();
         applyThemeBackground();
         showHome();
         render();
