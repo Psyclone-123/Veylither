@@ -296,7 +296,7 @@
         .menu-link-btn:hover { color: #fff; border-color: #62cdff; }
 
         /* ===== HOME SCREEN ===== */
-        #home-screen, #skins-panel, #settings-panel {
+        #home-screen, #skins-panel, #settings-panel, #multi-setup {
             position: absolute;
             inset: 0;
             z-index: 8;
@@ -491,6 +491,101 @@
             margin: 6px 0 14px;
             font-size: 0.9rem;
             text-shadow: 0 0 8px rgba(255, 213, 74, 0.45);
+        }
+
+        /* ===== MULTIPLAYER ===== */
+        #multi-hud {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            z-index: 6;
+            pointer-events: none;
+        }
+        #mp-timer {
+            font-size: 1.35rem;
+            font-weight: 800;
+            color: #62cdff;
+            letter-spacing: 1px;
+            text-shadow: 0 0 10px #62cdff;
+        }
+        #mp-scoreboard { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+        .mp-chip {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-width: 58px;
+            padding: 4px 9px;
+            border-radius: 8px;
+            background: rgba(20, 15, 40, 0.82);
+            border: 1px solid #2e2a4a;
+            transition: all 0.15s;
+        }
+        .mp-chip.active { border-color: #00ffcc; box-shadow: 0 0 12px rgba(0, 255, 204, 0.45); }
+        .mp-chip.dead { opacity: 0.4; }
+        .mp-chip .mp-name { font-size: 0.6rem; letter-spacing: 1px; color: #88ddff; }
+        .mp-chip .mp-score { font-size: 0.95rem; font-weight: 800; color: #fff; }
+
+        .mp-sub {
+            color: #b8b0d0;
+            font-size: 0.85rem;
+            max-width: 340px;
+            margin: 0 auto 18px;
+            line-height: 1.4;
+        }
+        .mp-count { display: flex; flex-direction: column; gap: 12px; margin-bottom: 18px; }
+        .mp-online-soon {
+            color: #6a6a8a;
+            font-size: 0.75rem;
+            letter-spacing: 1px;
+            margin-bottom: 18px;
+        }
+        #mp-results {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(15, 10, 30, 0.95);
+            padding: 34px 46px;
+            border-radius: 15px;
+            text-align: center;
+            color: white;
+            z-index: 10;
+            box-shadow: 0 0 20px rgba(242, 113, 255, 0.5), 0 0 40px rgba(98, 205, 255, 0.2);
+            border: 2px solid #62cdff;
+            display: none;
+            pointer-events: auto;
+            max-width: 92vw;
+        }
+        #mp-results-title {
+            font-size: 2.3rem;
+            font-weight: 900;
+            letter-spacing: 4px;
+            margin: 0 0 16px 0;
+            background: linear-gradient(90deg, #f271ff, #62cdff, #ffb07c);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .mp-results-list { margin-bottom: 18px; }
+        .mp-result-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 40px;
+            padding: 7px 12px;
+            font-size: 1.05rem;
+            border-radius: 8px;
+        }
+        .mp-result-row.win { background: rgba(0, 255, 204, 0.12); color: #9dffe0; font-weight: 800; }
+
+        /* Gamepad menu focus highlight */
+        .pad-focus {
+            outline: 3px solid #62cdff !important;
+            outline-offset: 2px;
+            box-shadow: 0 0 16px rgba(98, 205, 255, 0.75) !important;
         }
 
         /* ===== SETTINGS ===== */
@@ -776,6 +871,14 @@
         <button class="menu-link-btn" onclick="openLeaderboard()">VIEW LEADERBOARD</button>
     </div>
 
+    <!-- MULTIPLAYER RESULTS -->
+    <div id="mp-results">
+        <h2 id="mp-results-title">P1 WINS!</h2>
+        <div id="mp-results-list" class="mp-results-list"></div>
+        <button class="play-again-btn" onclick="openMultiSetup()">PLAY AGAIN</button>
+        <button class="menu-link-btn" onclick="showHome()">MAIN MENU</button>
+    </div>
+
     <!-- HOME SCREEN -->
     <div id="home-screen">
         <div class="home-title-wrap">
@@ -787,9 +890,7 @@
             <button class="home-btn" onclick="openSkins()">◆ SKINS</button>
             <button class="home-btn" onclick="openSettings()">⚙ SETTINGS</button>
             <button class="home-btn" onclick="openLeaderboard()">🏆 LEADERBOARD</button>
-            <button class="home-btn disabled" disabled>
-                ⚇ MULTIPLAYER <span class="soon-tag">COMING SOON</span>
-            </button>
+            <button class="home-btn" onclick="openMultiSetup()">⚇ MULTIPLAYER</button>
         </div>
         <div class="home-footer">
             <button class="credits-link" onclick="openCredits()">CREDITS</button>
@@ -808,6 +909,21 @@
         </div>
     </div>
 
+    <!-- MULTIPLAYER SETUP -->
+    <div id="multi-setup">
+        <div class="panel-inner">
+            <h2 class="panel-title">MULTIPLAYER</h2>
+            <p class="mp-sub">Pass &amp; play on one device. Everyone shares the board but keeps their own score. Each turn you get 30 seconds to place as many pieces as you can, then it passes. When everyone's out, the highest score wins.</p>
+            <div class="mp-count">
+                <button class="home-btn primary" onclick="startMultiplayer(2)">▶ 2 PLAYERS</button>
+                <button class="home-btn" onclick="startMultiplayer(3)">▶ 3 PLAYERS</button>
+                <button class="home-btn" onclick="startMultiplayer(4)">▶ 4 PLAYERS</button>
+            </div>
+            <div class="mp-online-soon">⚇ ONLINE — COMING SOON</div>
+            <button class="home-btn back-btn" onclick="showHome()">← BACK</button>
+        </div>
+    </div>
+
     <!-- SETTINGS PANEL -->
     <div id="settings-panel">
         <div class="panel-inner">
@@ -819,6 +935,10 @@
             <div class="settings-row">
                 <span>Haptics (Vibration)</span>
                 <button class="toggle-btn" id="haptics-toggle" onclick="toggleHaptics()">ON</button>
+            </div>
+            <div class="settings-row">
+                <span>PS5 Adaptive Triggers</span>
+                <button class="toggle-btn" onclick="enablePS5Haptics()">ENABLE</button>
             </div>
             <div class="settings-row">
                 <span>Board Size</span>
@@ -862,6 +982,12 @@
     <div id="undo-bar">
         <button id="undo-btn" class="rewind-btn disabled" onclick="undoMove()" aria-label="Undo">↶<span id="undo-count" class="rewind-count">0</span></button>
         <button id="redo-btn" class="rewind-btn disabled" onclick="redoMove()" aria-label="Redo">↷</button>
+    </div>
+
+    <!-- Multiplayer HUD: turn timer + live scoreboard -->
+    <div id="multi-hud">
+        <div id="mp-timer">30s</div>
+        <div id="mp-scoreboard"></div>
     </div>
 
     <!-- PAUSE MENU -->
@@ -1124,6 +1250,8 @@
 
         // Screen state: 'home' | 'playing'  (game only runs input when playing)
         let appScreen = 'home';
+        // Game mode: 'solo' | 'multi' | 'multi-over' (drives turn/game-over logic)
+        let gameMode = 'solo';
 
         function applyThemeBackground() {
             document.body.style.background = theme().bg;
@@ -1131,12 +1259,11 @@
         function setTheme(i) {
             currentThemeIndex = i;
             applyThemeBackground();
-            try { localStorage.setItem('ew_skin', THEMES[i].id); } catch (e) {}
+            EWStore.set('ew_skin', THEMES[i].id);
         }
         // Restore the last-equipped skin (only if the player still owns it).
         function restoreEquippedSkin() {
-            let id = null;
-            try { id = localStorage.getItem('ew_skin'); } catch (e) {}
+            const id = EWStore.get('ew_skin');
             if (!id) return;
             const idx = THEMES.findIndex(t => t.id === id);
             if (idx >= 0 && isOwned(id)) currentThemeIndex = idx;
@@ -1150,6 +1277,42 @@
         // NOTE: this is client-side for now — fine for an earn-by-play economy,
         // but real-money Spark purchases will need server-side validation later.
         // ==========================================
+        // Storage layer (native-ready). Sync localStorage is the working store
+        // (persists on web AND inside the native WebView). When running in
+        // Capacitor, writes are also mirrored to native Preferences for
+        // durability and hydrated back on boot. Falls back to an in-memory map
+        // if storage is blocked (e.g. private mode). Mirrors src/platform/storage.js.
+        const EWStore = (function () {
+            const mem = {};
+            let ls = null;
+            try { ls = window.localStorage; ls.getItem('__ew_t'); } catch (e) { ls = null; }
+            const prefs = (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Preferences) || null;
+            function get(key) {
+                if (ls) { try { const v = ls.getItem(key); if (v !== null) return v; } catch (e) {} }
+                return key in mem ? mem[key] : null;
+            }
+            function set(key, value) {
+                value = String(value);
+                mem[key] = value;
+                if (ls) { try { ls.setItem(key, value); } catch (e) {} }
+                if (prefs) { try { prefs.set({ key: key, value: value }); } catch (e) {} } // async best-effort
+            }
+            // Pull durable native values into the sync store before first use.
+            async function hydrate(keys) {
+                if (!prefs) return;
+                for (const k of keys) {
+                    try {
+                        const res = await prefs.get({ key: k });
+                        if (res && res.value != null && get(k) == null) {
+                            mem[k] = res.value;
+                            if (ls) { try { ls.setItem(k, res.value); } catch (e) {} }
+                        }
+                    } catch (e) {}
+                }
+            }
+            return { get: get, set: set, hydrate: hydrate };
+        })();
+
         const SPARK_PRICES = {         // skin id -> cost (0 = free / always owned)
             cyber: 0, vapor: 0,
             toxic: 150, gold: 200, jade: 250, ember: 300, kawaii: 400, independence: 500
@@ -1160,21 +1323,20 @@
         const LS_OWNED  = 'ew_owned';
 
         function loadSparks() {
-            let v = 0;
-            try { v = parseInt(localStorage.getItem(LS_SPARKS), 10); } catch (e) {}
+            const v = parseInt(EWStore.get(LS_SPARKS), 10);
             return Number.isFinite(v) ? v : 0;
         }
-        function saveSparks() { try { localStorage.setItem(LS_SPARKS, String(sparks)); } catch (e) {} }
+        function saveSparks() { EWStore.set(LS_SPARKS, sparks); }
         let sparks = loadSparks();
 
         function loadOwned() {
             let arr = [];
-            try { arr = JSON.parse(localStorage.getItem(LS_OWNED)) || []; } catch (e) {}
+            try { arr = JSON.parse(EWStore.get(LS_OWNED)) || []; } catch (e) {}
             if (!Array.isArray(arr)) arr = [];
             FREE_SKINS.forEach(id => { if (!arr.includes(id)) arr.push(id); });
             return arr;
         }
-        function saveOwned() { try { localStorage.setItem(LS_OWNED, JSON.stringify(ownedSkins)); } catch (e) {} }
+        function saveOwned() { EWStore.set(LS_OWNED, JSON.stringify(ownedSkins)); }
         let ownedSkins = loadOwned();
         let runSparksAwarded = 0;      // high-water mark of Sparks paid out this run
 
@@ -1509,6 +1671,7 @@
             if (typeof navigator !== 'undefined' && navigator.vibrate) {
                 try { navigator.vibrate(pattern); } catch (e) {}
             }
+            if (typeof padHaptic === 'function') padHaptic(pattern);   // controller rumble
         }
         // Named patterns (ms). Arrays alternate vibrate/pause.
         const HAPTICS = {
@@ -1681,6 +1844,8 @@
 
         function performPlacement(startRow, startCol, piece) {
             if (!piece) return;
+            // In multiplayer, only accept a placement during an active, unlocked turn.
+            if (gameMode !== 'solo' && (gameMode !== 'multi' || turnLocked)) return;
             initAudio();
             pushUndo();                    // snapshot pre-placement for rewind
             let blocksPlaced = 0;
@@ -1741,7 +1906,15 @@
                 showPopup(praise[Math.floor(Math.random() * praise.length)], theme().accent);
             }
             checkWinCondition();
-            setTimeout(checkGameOver, 50);
+            updateBoardTension();          // adaptive-trigger stiffness from board state
+            if (gameMode === 'multi') {
+                // Turn does NOT end on placement — you keep playing until your 30s
+                // runs out. Only end early if this placement left you with no move.
+                updateMultiHUD();
+                if (activePlayerStuck()) failActivePlayer();
+            } else {
+                setTimeout(checkGameOver, 50);
+            }
         }
 
         function placePiece(startRow, startCol, piece) {
@@ -1795,6 +1968,7 @@
             isGameOver = true;
             document.getElementById('pause-btn').style.display = 'none';
             showRewindBar(false);
+            if (typeof ControllerFX !== 'undefined') ControllerFX.reset();  // release triggers
             preview = null;
             playSound('place');
             haptic(HAPTICS.gameover);
@@ -1809,6 +1983,7 @@
         }
 
         function checkGameOver() {
+            if (gameMode !== 'solo') return;   // multiplayer resolves fails via turns
             if (isGameOver) return;
 
             const current = queue[0];
@@ -1831,6 +2006,196 @@
             document.getElementById('game-over').style.display = 'none';
             startPlay();
         }
+
+        // ==========================================
+        // LOCAL MULTIPLAYER (pass-and-play, 2–4 players)
+        // One SHARED board; each player keeps their own score, multiplier, queue
+        // and hold. On a player's turn their state is swapped into the game
+        // globals, so all the normal placement/scoring/clear logic applies to
+        // them and their piece difficulty ramps off their OWN score (same curve
+        // as solo). Turns last 30s; timing out skips (you keep your piece). A
+        // player is out when stuck (same rule as solo game-over); when everyone's
+        // out, highest score wins. endTurn()/loadPlayerState() are the seams an
+        // online layer would later drive from network events.
+        // ==========================================
+        const TURN_SECONDS = 30;
+        let players = [];               // {name,score,multiplier,queue,held,canHold,alive}
+        let activePlayer = 0;
+        let turnTimeLeft = TURN_SECONDS;
+        let turnTimerId = null;
+        let turnLocked = false;         // input lock during turn hand-off
+
+        function saveActivePlayerState() {
+            const p = players[activePlayer];
+            if (!p) return;
+            p.score = score; p.multiplier = multiplier;
+            p.queue = queue; p.held = heldPiece; p.canHold = canHold;
+        }
+        function loadPlayerState(i) {
+            activePlayer = i;
+            const p = players[i];
+            score = p.score; multiplier = p.multiplier;
+            queue = p.queue; heldPiece = p.held; canHold = p.canHold;
+            preview = null;
+        }
+        // Same rule as solo checkGameOver, evaluated on the current (active) globals.
+        function activePlayerStuck() {
+            const cur = queue[0];
+            if (cur && canFitAnywhere(cur)) return false;
+            if (heldPiece && canFitAnywhere(heldPiece)) return false;
+            if (!heldPiece) return false;   // can stash -> not out yet
+            return true;
+        }
+
+        function startMultiplayer(numPlayers) {
+            gameMode = 'multi';
+            appScreen = 'playing';
+            isGameOver = false;
+            isPaused = false;
+            playTransitionSound();
+            if (!hasStartedMusic) startMusic();
+
+            // Fresh shared board (same build as initGame).
+            grid = [];
+            for (let r = 0; r < BOARD_SIZE; r++) {
+                grid[r] = [];
+                for (let c = 0; c < BOARD_SIZE; c++) grid[r][c] = Math.random() > 0.5 ? 1 : 0;
+            }
+            flameParticles = []; flood = null; crystals = null; fireworks = []; rockets = [];
+
+            // Build each player; fill their queue at their own (zero) score.
+            players = [];
+            for (let i = 0; i < numPlayers; i++) {
+                score = 0; multiplier = 1; queue = []; heldPiece = null; canHold = true;
+                fillQueue();                       // score 0 -> easy tier, like solo start
+                players.push({ name: 'P' + (i + 1), score: 0, multiplier: 1,
+                               queue: queue, held: null, canHold: true, alive: true });
+                queue = [];                         // detach reference for next player
+            }
+            activePlayer = 0;
+            loadPlayerState(0);
+
+            document.getElementById('home-screen').style.display = 'none';
+            document.getElementById('multi-setup').style.display = 'none';
+            document.getElementById('mp-results').style.display = 'none';
+            document.getElementById('ui-layer').style.display = 'flex';
+            document.getElementById('message').style.display = 'block';
+            document.getElementById('pause-menu').style.display = 'none';
+            document.getElementById('pause-btn').style.display = 'flex';
+            showRewindBar(false);                   // no undo in multiplayer
+            document.getElementById('multi-hud').style.display = 'flex';
+            startTurnTimer();
+            updateMultiHUD();
+        }
+
+        function startTurnTimer() {
+            turnLocked = false;
+            turnTimeLeft = TURN_SECONDS;
+            updateTurnTimerUI();
+            clearInterval(turnTimerId);
+            turnTimerId = setInterval(function () {
+                if (isPaused || gameMode !== 'multi') return;
+                turnTimeLeft--;
+                updateTurnTimerUI();
+                if (turnTimeLeft <= 0) onTurnTimeout();
+            }, 1000);
+        }
+        function stopTurnTimer() { clearInterval(turnTimerId); turnTimerId = null; }
+
+        // 30s elapsed: the turn is over — pass to the next player. Any piece the
+        // player hadn't placed yet stays with them for their next turn.
+        function onTurnTimeout() { endTurn(); }
+
+        // A player who runs out of legal moves during their turn is eliminated.
+        function failActivePlayer() {
+            if (gameMode !== 'multi') return;
+            players[activePlayer].alive = false;
+            saveActivePlayerState();
+            updateMultiHUD();
+            endTurn();                       // pass to the next alive player
+        }
+
+        function endTurn() {
+            if (gameMode !== 'multi') return;
+            stopTurnTimer();
+            saveActivePlayerState();
+            advanceToNextPlayer();
+        }
+
+        function advanceToNextPlayer() {
+            const n = players.length;
+            for (let step = 1; step <= n; step++) {
+                const idx = (activePlayer + step) % n;
+                if (!players[idx].alive) continue;
+                loadPlayerState(idx);
+                if (activePlayerStuck()) {           // eliminated on their turn
+                    players[idx].alive = false;
+                    saveActivePlayerState();
+                    updateMultiHUD();
+                    continue;
+                }
+                showMessage(players[idx].name + ' — your turn');
+                startTurnTimer();
+                updateMultiHUD();
+                return;
+            }
+            endMatch();                              // nobody left who can move
+        }
+
+        function endMatch() {
+            stopTurnTimer();
+            gameMode = 'multi-over';
+            saveActivePlayerState();
+            const ranked = players.map((p, i) => ({ i: i, name: p.name, score: p.score }))
+                                  .sort((a, b) => b.score - a.score);
+            const top = ranked.length ? ranked[0].score : 0;
+            const winners = ranked.filter(r => r.score === top);
+            const title = winners.length > 1 ? 'TIE!' : (winners[0].name + ' WINS!');
+            document.getElementById('mp-results-title').textContent = title;
+            document.getElementById('mp-results-list').innerHTML = ranked.map((r, k) =>
+                `<div class="mp-result-row${winners.some(w => w.i === r.i) ? ' win' : ''}">` +
+                `<span>${k + 1}. ${r.name}</span><span>${r.score.toLocaleString()}</span></div>`).join('');
+            document.getElementById('pause-btn').style.display = 'none';
+            document.getElementById('multi-hud').style.display = 'none';
+            document.getElementById('mp-results').style.display = 'flex';
+        }
+
+        function exitMultiplayer() {
+            stopTurnTimer();
+            gameMode = 'solo';
+            players = [];
+            const h = document.getElementById('multi-hud'); if (h) h.style.display = 'none';
+            const r = document.getElementById('mp-results'); if (r) r.style.display = 'none';
+        }
+
+        function updateTurnTimerUI() {
+            const el = document.getElementById('mp-timer');
+            if (el) el.textContent = Math.max(0, turnTimeLeft) + 's';
+        }
+        function updateMultiHUD() {
+            const board = document.getElementById('mp-scoreboard');
+            if (!board) return;
+            board.innerHTML = players.map((p, i) =>
+                `<div class="mp-chip${i === activePlayer && p.alive ? ' active' : ''}${p.alive ? '' : ' dead'}">` +
+                `<span class="mp-name">${p.name}${p.alive ? '' : ' ✗'}</span>` +
+                `<span class="mp-score">${p.score.toLocaleString()}</span></div>`).join('');
+            updateTurnTimerUI();
+        }
+
+        function openMultiSetup() {
+            exitMultiplayer();
+            appScreen = 'home';
+            isGameOver = false;
+            document.getElementById('home-screen').style.display = 'none';
+            document.getElementById('ui-layer').style.display = 'none';
+            document.getElementById('message').style.display = 'none';
+            document.getElementById('pause-btn').style.display = 'none';
+            document.getElementById('multi-setup').style.display = 'flex';
+        }
+
+        window.openMultiSetup = openMultiSetup;
+        window.startMultiplayer = startMultiplayer;
+        window.exitMultiplayer = exitMultiplayer;
 
         // ==========================================
         // UNDO / REDO  — rewind up to 3 moves. Every placement and hold pushes a
@@ -1873,7 +2238,7 @@
             updateRewindUI();
         }
         function undoMove() {
-            if (appScreen !== 'playing' || isPaused || !undoStack.length) return;
+            if (gameMode !== 'solo' || appScreen !== 'playing' || isPaused || !undoStack.length) return;
             redoStack.push(snapshotState());
             if (redoStack.length > MAX_UNDO) redoStack.shift();
             restoreState(undoStack.pop());
@@ -1883,7 +2248,7 @@
             updateRewindUI();
         }
         function redoMove() {
-            if (appScreen !== 'playing' || isPaused || !redoStack.length) return;
+            if (gameMode !== 'solo' || appScreen !== 'playing' || isPaused || !redoStack.length) return;
             undoStack.push(snapshotState());
             if (undoStack.length > MAX_UNDO) undoStack.shift();
             restoreState(redoStack.pop());
@@ -1932,7 +2297,7 @@
             document.getElementById('pause-menu').style.display = 'none';
             if (appScreen === 'playing' && !isGameOver) {
                 document.getElementById('pause-btn').style.display = 'flex';
-                showRewindBar(true);
+                if (gameMode === 'solo') showRewindBar(true);
             }
         }
 
@@ -1949,6 +2314,7 @@
         // Hold logic (matches Morphed)
         function holdCurrentPiece() {
             if (queue.length === 0) return;
+            if (gameMode !== 'solo' && (gameMode !== 'multi' || turnLocked)) return;
 
             initAudio();
             pushUndo();                    // snapshot pre-hold for rewind
@@ -1968,7 +2334,12 @@
             preview = null;
             playHoldSound();
             haptic(HAPTICS.hold);
-            checkGameOver();
+            if (gameMode === 'multi') {
+                updateMultiHUD();
+                if (activePlayerStuck()) failActivePlayer();
+            } else {
+                checkGameOver();
+            }
         }
 
         // ==========================================
@@ -2892,6 +3263,7 @@
         }
 
         function render() {
+            pollGamepad();               // controller input (in menus and in game)
             stepPhysics(0.095);
 
             // Update fluid image
@@ -3121,6 +3493,9 @@
         function showHome() {
             appScreen = 'home';
             isGameOver = false;
+            if (typeof ControllerFX !== 'undefined') ControllerFX.reset();  // release triggers
+            exitMultiplayer();
+            document.getElementById('multi-setup').style.display = 'none';
             document.getElementById('game-over').style.display = 'none';
             document.getElementById('skins-panel').style.display = 'none';
             document.getElementById('settings-panel').style.display = 'none';
@@ -3141,6 +3516,8 @@
             playTransitionSound();
             if (!hasStartedMusic) startMusic();
 
+            exitMultiplayer();                          // ensure solo mode
+            document.getElementById('multi-setup').style.display = 'none';
             document.getElementById('home-screen').style.display = 'none';
             document.getElementById('skins-panel').style.display = 'none';
             document.getElementById('settings-panel').style.display = 'none';
@@ -3213,12 +3590,325 @@
             if (hapticsEnabled) haptic(HAPTICS.place); // confirm buzz when enabling
         };
 
+        // ==========================================
+        // GAMEPAD SUPPORT (Xbox / PlayStation-style controllers)
+        // In game: D-pad or left stick move a piece cursor, A places, Y or a
+        // shoulder button holds, Start pauses. In menus: D-pad moves focus
+        // between buttons, A activates, B / Start goes back. Fully additive —
+        // mouse, touch and keyboard keep working; the pad only drives things
+        // while it's the most recent input. Polled once per frame from render().
+        // ==========================================
+        let padIndex = null;
+        let padPrev = [];              // previous frame's button pressed states
+        let padActive = false;         // was the pad the most recent input?
+        let padMoveCooldown = 0;       // frames until next repeat move
+        let padPrevDir = false;
+        let padCurRow = 2, padCurCol = 2;   // in-game piece cursor (top-left cell)
+        let padMenuIndex = 0;
+        let padMenuEl = null;
+
+        window.addEventListener('gamepadconnected', function (e) {
+            padIndex = e.gamepad.index; padActive = true;
+            try { showMessage('🎮 Controller connected'); } catch (x) {}
+        });
+        window.addEventListener('gamepaddisconnected', function (e) {
+            if (e.gamepad.index === padIndex) padIndex = null;
+        });
+        // Any pointer input hands control back to the mouse/touch.
+        ['mousemove', 'pointerdown', 'touchstart'].forEach(function (ev) {
+            window.addEventListener(ev, function () { padActive = false; clearPadFocus(); }, { passive: true });
+        });
+
+        function getActivePad() {
+            const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+            if (padIndex != null && pads[padIndex]) return pads[padIndex];
+            for (let i = 0; i < pads.length; i++) if (pads[i]) { padIndex = pads[i].index; return pads[i]; }
+            return null;
+        }
+        function padDown(pad, i) { return !!(pad.buttons[i] && pad.buttons[i].pressed); }
+        function padHit(pad, i) { return padDown(pad, i) && !padPrev[i]; }
+
+        // --- Controller rumble ---------------------------------------------
+        // Standard Gamepad Haptics API (dual-rumble). Works for Xbox, DualShock
+        // and DualSense (PS5) controllers in Chromium browsers. strong = the big
+        // low-frequency motor, weak = the high-frequency motor, d = ms.
+        // NOTE: DualSense adaptive triggers + high-fidelity haptics are NOT part
+        // of this API — those require WebHID (see docs). This is real PS5
+        // controller rumble, not the trigger-resistance effects.
+        const RUMBLE = {
+            place:    { s: 0.12, w: 0.28, d: 70 },
+            hold:     { s: 0.08, w: 0.35, d: 80 },
+            invalid:  { s: 0.00, w: 0.65, d: 140 },
+            clear:    { s: 0.90, w: 0.65, d: 320 },
+            gameover: { s: 0.85, w: 0.20, d: 550 },
+            default:  { s: 0.20, w: 0.30, d: 90 }
+        };
+        function padRumble(prof) {
+            const pad = getActivePad();
+            if (!pad) return;
+            const va = pad.vibrationActuator;
+            if (va && va.playEffect) {
+                try {
+                    va.playEffect('dual-rumble', {
+                        startDelay: 0, duration: prof.d,
+                        weakMagnitude: prof.w, strongMagnitude: prof.s
+                    });
+                } catch (e) {}
+                return;
+            }
+            const ha = pad.hapticActuators && pad.hapticActuators[0];   // older API fallback
+            if (ha && ha.pulse) { try { ha.pulse(Math.max(prof.s, prof.w), prof.d); } catch (e) {} }
+        }
+        // Map a HAPTICS pattern (passed to haptic()) to a named intent, then hand
+        // it to ControllerFX (which picks the right backend for the platform).
+        function padHaptic(pattern) {
+            if (!padActive) return;                    // only when the pad is in use
+            let kind = 'default';
+            for (const k in HAPTICS) { if (HAPTICS[k] === pattern) { kind = k; break; } }
+            ControllerFX.event(kind);
+        }
+
+        // ==========================================
+        // CONTROLLER FX — intent-based haptics / adaptive-trigger abstraction.
+        // The game only ever calls ControllerFX.event('place'|'clear'|…) and
+        // ControllerFX.setTension(0..1). It never touches a device directly, so
+        // the SAME game code works on every platform — you swap the BACKEND, not
+        // the game. Backends are chosen at runtime by capability:
+        //   * native  — a Capacitor plugin (iOS GameController adaptive triggers,
+        //               Android rumble). THIS is the mobile path.
+        //   * webhid  — DualSense over WebHID on desktop Chromium (real adaptive
+        //               triggers + rumble).
+        //   * gamepad — standard dual-rumble fallback (works wherever gamepads do).
+        // Mirror + native contract: src/platform/controller-fx.js,
+        // docs/controller-haptics.md.
+        // ==========================================
+        const ControllerFX = (function () {
+            let hidDevice = null;
+            let lastTension = 0;
+
+            // ---- native (Capacitor plugin) backend — the mobile path ----
+            function nativeBackend() {
+                const P = (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.ControllerHaptics) || null;
+                if (!P) return null;
+                return {
+                    name: 'native',
+                    event:      function (k) { try { P.event({ kind: k }); } catch (e) {} },
+                    setTension: function (t) { try { P.setTension({ amount: t }); } catch (e) {} },
+                    reset:      function ()  { try { P.reset(); } catch (e) {} }
+                };
+            }
+
+            // ---- WebHID DualSense backend (desktop Chromium) ----
+            function hidBackend() {
+                if (!hidDevice) return null;
+                return {
+                    name: 'webhid-dualsense',
+                    event:      function (k) { hidEvent(k); },
+                    setTension: function (t) { hidTension(t); },
+                    reset:      function ()  { hidWrite({ strong: 0, weak: 0, lTrig: triggerOff(), rTrig: triggerOff() }); }
+                };
+            }
+
+            // ---- standard gamepad dual-rumble backend (fallback) ----
+            const gamepadBackend = {
+                name: 'gamepad-rumble',
+                event:      function (k) { padRumble(RUMBLE[k] || RUMBLE.default); },
+                setTension: function () {},        // no trigger channel on this API
+                reset:      function () {}
+            };
+
+            function pick() { return nativeBackend() || hidBackend() || gamepadBackend; }
+
+            // ---- DualSense USB output report. Rumble bytes are reliable; the
+            //      adaptive-trigger layout follows the common community mapping
+            //      but should be validated on hardware (firmware differences
+            //      exist). Bluetooth uses report 0x31 + a CRC — not handled here. ----
+            function triggerOff() { return { mode: 0x00, forces: [0, 0, 0, 0, 0, 0, 0] }; }
+            function triggerResistance(force) {    // constant resistance, force 0..1
+                const f = Math.max(0, Math.min(7, Math.round(force * 7)));
+                return { mode: 0x01 /* rigid */, forces: [f, f, f, f, f, f, f] };
+            }
+            function buildReport(o) {
+                const d = new Uint8Array(47);
+                d[0] = 0xFF;   // enable rumble + trigger sub-features
+                d[1] = 0xF7;
+                d[2] = Math.round((o.weak   || 0) * 255);   // right (high-freq) motor
+                d[3] = Math.round((o.strong || 0) * 255);   // left  (low-freq) motor
+                const R = o.rTrig || triggerOff();
+                const L = o.lTrig || triggerOff();
+                d[10] = R.mode; for (let i = 0; i < 7; i++) d[11 + i] = R.forces[i] || 0;
+                d[21] = L.mode; for (let i = 0; i < 7; i++) d[22 + i] = L.forces[i] || 0;
+                return d;
+            }
+            function hidWrite(o) {
+                if (!hidDevice) return;
+                try { hidDevice.sendReport(0x02, buildReport(o)); } catch (e) {}
+            }
+            function hidTension(t) {
+                lastTension = t;
+                const tr = t > 0.02 ? triggerResistance(t) : triggerOff();
+                hidWrite({ strong: 0, weak: 0, lTrig: tr, rTrig: tr });
+            }
+            function hidEvent(k) {
+                const prof = RUMBLE[k] || RUMBLE.default;
+                const tr = lastTension > 0.02 ? triggerResistance(lastTension) : triggerOff();
+                hidWrite({ strong: prof.s, weak: prof.w, lTrig: tr, rTrig: tr });
+                setTimeout(function () { hidWrite({ strong: 0, weak: 0, lTrig: tr, rTrig: tr }); }, prof.d);
+            }
+
+            async function connectHID() {
+                if (!navigator.hid) { try { showMessage('WebHID not supported here'); } catch (e) {} return false; }
+                try {
+                    const devs = await navigator.hid.requestDevice({ filters: [{ vendorId: 0x054C }] }); // Sony
+                    if (!devs || !devs.length) return false;
+                    hidDevice = devs[0];
+                    if (!hidDevice.opened) await hidDevice.open();
+                    hidDevice.addEventListener('disconnect', function () { hidDevice = null; });
+                    try { showMessage('🎮 PS5 adaptive haptics ON'); } catch (e) {}
+                    return true;
+                } catch (e) { try { showMessage('Controller connect cancelled'); } catch (x) {} return false; }
+            }
+
+            return {
+                event:      function (kind) { if (hapticsEnabled && padActive) pick().event(kind); },
+                setTension: function (t) { if (hapticsEnabled && padActive) pick().setTension(Math.max(0, Math.min(1, t || 0))); },
+                reset:      function () { try { pick().reset(); } catch (e) {} },
+                connectHID: connectHID,
+                backendName: function () { return pick().name; }
+            };
+        })();
+        window.enablePS5Haptics = function () { ControllerFX.connectHID(); };
+
+        // Board "pressure" → adaptive-trigger tension: the triggers stiffen as the
+        // board approaches a blackout/whiteout (a solve). No-op on backends
+        // without a trigger channel.
+        function updateBoardTension() {
+            if (typeof ControllerFX === 'undefined' || !grid || !grid.length) return;
+            let sum = 0;
+            for (let r = 0; r < BOARD_SIZE; r++)
+                for (let c = 0; c < BOARD_SIZE; c++) sum += grid[r][c];
+            const half = (BOARD_SIZE * BOARD_SIZE) / 2;
+            ControllerFX.setTension(Math.abs(sum - half) / half);   // 0 at half, 1 near a solve
+        }
+
+        function clearPadFocus() {
+            if (padMenuEl) { padMenuEl.classList.remove('pad-focus'); padMenuEl = null; }
+        }
+        function visibleMenuButtons() {
+            const ids = ['pause-menu', 'game-over', 'mp-results', 'home-screen',
+                         'multi-setup', 'skins-panel', 'settings-panel',
+                         'leaderboard-panel', 'credits-panel'];
+            for (let k = 0; k < ids.length; k++) {
+                const el = document.getElementById(ids[k]);
+                if (el && el.style.display !== 'none' && el.offsetParent !== null) {
+                    const btns = Array.prototype.slice.call(el.querySelectorAll('button'))
+                        .filter(function (b) { return !b.disabled && b.offsetParent !== null; });
+                    if (btns.length) return btns;
+                }
+            }
+            return null;
+        }
+        function focusPadButton(btns, idx) {
+            clearPadFocus();
+            padMenuIndex = ((idx % btns.length) + btns.length) % btns.length;
+            padMenuEl = btns[padMenuIndex];
+            padMenuEl.classList.add('pad-focus');
+            try { padMenuEl.scrollIntoView({ block: 'nearest' }); } catch (x) {}
+        }
+
+        function pollGamepad() {
+            const pad = getActivePad();
+            if (!pad) return;
+
+            let anyPress = false;
+            for (let i = 0; i < pad.buttons.length; i++) if (padHit(pad, i)) { anyPress = true; break; }
+            const ax = pad.axes[0] || 0, ay = pad.axes[1] || 0;
+            if (anyPress || Math.abs(ax) > 0.5 || Math.abs(ay) > 0.5) padActive = true;
+
+            // Directional intent from D-pad or left stick, with press-repeat.
+            let dx = 0, dy = 0;
+            if (padDown(pad, 14) || ax < -0.5) dx = -1; else if (padDown(pad, 15) || ax > 0.5) dx = 1;
+            if (padDown(pad, 12) || ay < -0.5) dy = -1; else if (padDown(pad, 13) || ay > 0.5) dy = 1;
+            const dirHeld = dx !== 0 || dy !== 0;
+            let doMove = false;
+            if (dirHeld) {
+                if (padMoveCooldown <= 0) { doMove = true; padMoveCooldown = padPrevDir ? 7 : 14; }
+                else padMoveCooldown--;
+            } else padMoveCooldown = 0;
+            padPrevDir = dirHeld;
+
+            const inGame = appScreen === 'playing' && !isPaused && !isGameOver &&
+                           (gameMode === 'solo' || gameMode === 'multi');
+
+            if (inGame) {
+                if (padActive) {
+                    const piece = queue[0];
+                    if (piece) {
+                        const maxRow = Math.max(0, BOARD_SIZE - piece.length);
+                        const maxCol = Math.max(0, BOARD_SIZE - (piece[0] ? piece[0].length : 1));
+                        if (doMove) { padCurRow += dy; padCurCol += dx; }
+                        padCurRow = Math.min(maxRow, Math.max(0, padCurRow));
+                        padCurCol = Math.min(maxCol, Math.max(0, padCurCol));
+                        preview = { startRow: padCurRow, startCol: padCurCol,
+                                    valid: canPlace(padCurRow, padCurCol, piece), piece: piece };
+                        if (padHit(pad, 0)) padPlace();                                   // A = place
+                        if (padHit(pad, 3) || padHit(pad, 4) || padHit(pad, 5)) holdCurrentPiece(); // Y/LB/RB = hold
+                    }
+                }
+                if (padHit(pad, 9)) pauseGame();                                          // Start = pause
+            } else {
+                const btns = visibleMenuButtons();
+                if (btns) {
+                    if (!padMenuEl || btns.indexOf(padMenuEl) < 0) focusPadButton(btns, 0);
+                    const step = dy !== 0 ? dy : dx;
+                    if (doMove && step) focusPadButton(btns, padMenuIndex + step);
+                    if (padHit(pad, 0)) { const el = padMenuEl; clearPadFocus(); if (el) el.click(); } // A = activate
+                    if (padHit(pad, 1) || padHit(pad, 9)) padBack();                                   // B / Start = back
+                } else {
+                    clearPadFocus();
+                }
+            }
+
+            padPrev = pad.buttons.map(function (b) { return b.pressed; });
+        }
+
+        function padPlace() {
+            const piece = queue[0];
+            if (!piece || !preview) return;
+            const sr = preview.startRow, sc = preview.startCol;
+            if (canPlace(sr, sc, piece)) {
+                placePiece(sr, sc, piece);
+                injectFluid(boardX + (sc + 0.5) * cellSize, boardY + (sr + 0.5) * cellSize, 0.6, 1.0, 0.85, 90, 3);
+            } else {
+                showMessage("Blocks must all be the same color!");
+                haptic(HAPTICS.invalid);
+            }
+        }
+        function padBack() {
+            const pm = document.getElementById('pause-menu');
+            if (pm && pm.style.display !== 'none') { resumeGame(); return; }
+            clearPadFocus();
+            showHome();
+        }
+
         // Boot: start on home screen with fluid running
         restoreEquippedSkin();
         updateSparkDisplays();
         applyThemeBackground();
         showHome();
         render();
+
+        // Native durability: inside Capacitor, pull any values saved to native
+        // Preferences (covers the rare case the WebView's localStorage was
+        // evicted) and refresh currency/skin state. No-op on the web.
+        EWStore.hydrate([LS_SPARKS, LS_OWNED, 'ew_skin']).then(function () {
+            sparks = loadSparks();
+            ownedSkins = loadOwned();
+            restoreEquippedSkin();
+            applyThemeBackground();
+            updateSparkDisplays();
+        });
     </script>
+    <!-- build: controller support + PS5 adaptive triggers -->
 </body>
 </html>
