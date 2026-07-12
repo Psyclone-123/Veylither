@@ -296,7 +296,7 @@
         .menu-link-btn:hover { color: #fff; border-color: #62cdff; }
 
         /* ===== HOME SCREEN ===== */
-        #home-screen, #skins-panel, #settings-panel, #multi-setup {
+        #home-screen, #skins-panel, #settings-panel, #multi-setup, #controls-panel {
             position: absolute;
             inset: 0;
             z-index: 8;
@@ -941,6 +941,14 @@
                 <button class="toggle-btn" onclick="enablePS5Haptics()">ENABLE</button>
             </div>
             <div class="settings-row">
+                <span>Controller Buttons</span>
+                <button class="toggle-btn" onclick="openControls()">REBIND</button>
+            </div>
+            <div class="settings-row">
+                <span>Test Rumble</span>
+                <button class="toggle-btn" onclick="testRumble()">BUZZ</button>
+            </div>
+            <div class="settings-row">
                 <span>Board Size</span>
                 <span class="settings-val">6 × 6</span>
             </div>
@@ -949,6 +957,17 @@
                 <span class="settings-val">1.0</span>
             </div>
             <button class="home-btn back-btn" onclick="showHome()">← BACK</button>
+        </div>
+    </div>
+
+    <!-- CONTROLLER REBIND PANEL -->
+    <div id="controls-panel">
+        <div class="panel-inner">
+            <h2 class="panel-title">CONTROLLER</h2>
+            <p class="mp-sub">Tap an action, then press the controller button you want for it. D-pad / left stick always move the piece; A confirms in menus.</p>
+            <div id="controls-list"></div>
+            <button class="home-btn" onclick="resetBinds()">RESET TO DEFAULTS</button>
+            <button class="home-btn back-btn" onclick="closeControls()">← BACK</button>
         </div>
     </div>
 
@@ -3496,6 +3515,7 @@
             if (typeof ControllerFX !== 'undefined') ControllerFX.reset();  // release triggers
             exitMultiplayer();
             document.getElementById('multi-setup').style.display = 'none';
+            var cpEl = document.getElementById('controls-panel'); if (cpEl) cpEl.style.display = 'none';
             document.getElementById('game-over').style.display = 'none';
             document.getElementById('skins-panel').style.display = 'none';
             document.getElementById('settings-panel').style.display = 'none';
@@ -3541,6 +3561,7 @@
 
         function openSettings() {
             document.getElementById('home-screen').style.display = 'none';
+            const cp = document.getElementById('controls-panel'); if (cp) cp.style.display = 'none';
             document.getElementById('settings-panel').style.display = 'flex';
         }
 
@@ -3606,6 +3627,24 @@
         let padCurRow = 2, padCurCol = 2;   // in-game piece cursor (top-left cell)
         let padMenuIndex = 0;
         let padMenuEl = null;
+        let padAxLatchX = 0, padAxLatchY = 0;   // stick hysteresis latches
+
+        // --- Rebindable controls (Settings → Controller) ---------------------
+        const DEFAULT_BIND = { place: 0, hold: 3, undo: 2, redo: 1, pause: 9 };
+        const BIND_ACTIONS = ['place', 'hold', 'undo', 'redo', 'pause'];
+        const BIND_LABELS = { place: 'Place piece', hold: 'Hold / swap', undo: 'Undo', redo: 'Redo', pause: 'Pause' };
+        const PAD_BTN_NAMES = ['A', 'B', 'X', 'Y', 'LB', 'RB', 'LT', 'RT', 'Back', 'Start', 'L3', 'R3', 'D-Up', 'D-Down', 'D-Left', 'D-Right'];
+        function padBtnName(i) { return PAD_BTN_NAMES[i] != null ? PAD_BTN_NAMES[i] : ('Btn ' + i); }
+        let padBind = (function () {
+            let b = null; try { b = JSON.parse(EWStore.get('ew_bind')); } catch (e) {}
+            return (b && typeof b === 'object') ? Object.assign({}, DEFAULT_BIND, b) : Object.assign({}, DEFAULT_BIND);
+        })();
+        function saveBind() { EWStore.set('ew_bind', JSON.stringify(padBind)); }
+        let padRebindAction = null;         // when set, the next button press binds it
+
+        // Cursor-movement feel: DAS = delay before auto-repeat, ARR = repeat rate
+        // (frames); DZ_ON/OFF give the stick hysteresis so a flick = one step.
+        const PAD_DAS = 18, PAD_ARR = 10, PAD_DZ_ON = 0.55, PAD_DZ_OFF = 0.30;
 
         window.addEventListener('gamepadconnected', function (e) {
             padIndex = e.gamepad.index; padActive = true;
@@ -3816,6 +3855,20 @@
             try { padMenuEl.scrollIntoView({ block: 'nearest' }); } catch (x) {}
         }
 
+        // Direction from a d-pad pair or an analog axis, with hysteresis: a flick
+        // registers ONE clean step; the stick must recenter (drop below DZ_OFF)
+        // before it fires again. Kills the "over-clicking" drift feel.
+        function dpadOrAxis(pad, negBtn, posBtn, axis, which) {
+            if (padDown(pad, negBtn)) return -1;
+            if (padDown(pad, posBtn)) return 1;
+            let v = which === 'x' ? padAxLatchX : padAxLatchY;
+            if (axis > PAD_DZ_ON) v = 1;
+            else if (axis < -PAD_DZ_ON) v = -1;
+            else if (Math.abs(axis) < PAD_DZ_OFF) v = 0;   // recenter zone -> release
+            if (which === 'x') padAxLatchX = v; else padAxLatchY = v;
+            return v;
+        }
+
         function pollGamepad() {
             const pad = getActivePad();
             if (!pad) return;
@@ -3823,16 +3876,29 @@
             let anyPress = false;
             for (let i = 0; i < pad.buttons.length; i++) if (padHit(pad, i)) { anyPress = true; break; }
             const ax = pad.axes[0] || 0, ay = pad.axes[1] || 0;
-            if (anyPress || Math.abs(ax) > 0.5 || Math.abs(ay) > 0.5) padActive = true;
+            if (anyPress || Math.abs(ax) > PAD_DZ_ON || Math.abs(ay) > PAD_DZ_ON) padActive = true;
 
-            // Directional intent from D-pad or left stick, with press-repeat.
-            let dx = 0, dy = 0;
-            if (padDown(pad, 14) || ax < -0.5) dx = -1; else if (padDown(pad, 15) || ax > 0.5) dx = 1;
-            if (padDown(pad, 12) || ay < -0.5) dy = -1; else if (padDown(pad, 13) || ay > 0.5) dy = 1;
+            // --- Rebind capture: the next non-d-pad button becomes the binding ---
+            if (padRebindAction) {
+                for (let i = 0; i < pad.buttons.length; i++) {
+                    if (i >= 12 && i <= 15) continue;      // keep d-pad for navigation
+                    if (padHit(pad, i)) {
+                        padBind[padRebindAction] = i; saveBind();
+                        padRebindAction = null; buildControlsList();
+                        break;
+                    }
+                }
+                padPrev = pad.buttons.map(function (b) { return b.pressed; });
+                return;                                    // consume this frame
+            }
+
+            // Directional intent with hysteresis + DAS/ARR repeat.
+            const dx = dpadOrAxis(pad, 14, 15, ax, 'x');
+            const dy = dpadOrAxis(pad, 12, 13, ay, 'y');
             const dirHeld = dx !== 0 || dy !== 0;
             let doMove = false;
             if (dirHeld) {
-                if (padMoveCooldown <= 0) { doMove = true; padMoveCooldown = padPrevDir ? 7 : 14; }
+                if (padMoveCooldown <= 0) { doMove = true; padMoveCooldown = padPrevDir ? PAD_ARR : PAD_DAS; }
                 else padMoveCooldown--;
             } else padMoveCooldown = 0;
             padPrevDir = dirHeld;
@@ -3846,16 +3912,23 @@
                     if (piece) {
                         const maxRow = Math.max(0, BOARD_SIZE - piece.length);
                         const maxCol = Math.max(0, BOARD_SIZE - (piece[0] ? piece[0].length : 1));
-                        if (doMove) { padCurRow += dy; padCurCol += dx; }
-                        padCurRow = Math.min(maxRow, Math.max(0, padCurRow));
-                        padCurCol = Math.min(maxCol, Math.max(0, padCurCol));
+                        if (doMove) {
+                            padCurRow = Math.min(maxRow, Math.max(0, padCurRow + dy));
+                            padCurCol = Math.min(maxCol, Math.max(0, padCurCol + dx));
+                            if (hapticsEnabled) padRumble({ s: 0, w: 0.14, d: 22 });   // subtle move tick
+                        } else {
+                            padCurRow = Math.min(maxRow, Math.max(0, padCurRow));
+                            padCurCol = Math.min(maxCol, Math.max(0, padCurCol));
+                        }
                         preview = { startRow: padCurRow, startCol: padCurCol,
                                     valid: canPlace(padCurRow, padCurCol, piece), piece: piece };
-                        if (padHit(pad, 0)) padPlace();                                   // A = place
-                        if (padHit(pad, 3) || padHit(pad, 4) || padHit(pad, 5)) holdCurrentPiece(); // Y/LB/RB = hold
+                        if (padHit(pad, padBind.place)) padPlace();
+                        if (padHit(pad, padBind.hold)) holdCurrentPiece();
+                        if (padHit(pad, padBind.undo)) undoMove();
+                        if (padHit(pad, padBind.redo)) redoMove();
                     }
                 }
-                if (padHit(pad, 9)) pauseGame();                                          // Start = pause
+                if (padHit(pad, padBind.pause)) pauseGame();
             } else {
                 const btns = visibleMenuButtons();
                 if (btns) {
@@ -3863,7 +3936,7 @@
                     const step = dy !== 0 ? dy : dx;
                     if (doMove && step) focusPadButton(btns, padMenuIndex + step);
                     if (padHit(pad, 0)) { const el = padMenuEl; clearPadFocus(); if (el) el.click(); } // A = activate
-                    if (padHit(pad, 1) || padHit(pad, 9)) padBack();                                   // B / Start = back
+                    if (padHit(pad, 1)) padBack();                                                     // B = back
                 } else {
                     clearPadFocus();
                 }
@@ -3871,6 +3944,37 @@
 
             padPrev = pad.buttons.map(function (b) { return b.pressed; });
         }
+
+        // --- Controller settings: rebind + test rumble -----------------------
+        function openControls() {
+            document.getElementById('settings-panel').style.display = 'none';
+            document.getElementById('controls-panel').style.display = 'flex';
+            padRebindAction = null;
+            buildControlsList();
+        }
+        function closeControls() {
+            document.getElementById('controls-panel').style.display = 'none';
+            padRebindAction = null;
+            openSettings();
+        }
+        function buildControlsList() {
+            const list = document.getElementById('controls-list');
+            if (!list) return;
+            list.innerHTML = BIND_ACTIONS.map(function (a) {
+                const waiting = padRebindAction === a;
+                return '<div class="settings-row"><span>' + BIND_LABELS[a] + '</span>' +
+                       '<button class="toggle-btn" onclick="startRebind(\'' + a + '\')">' +
+                       (waiting ? 'Press…' : padBtnName(padBind[a])) + '</button></div>';
+            }).join('');
+        }
+        function startRebind(a) { padRebindAction = a; buildControlsList(); }
+        function resetBinds() { padBind = Object.assign({}, DEFAULT_BIND); saveBind(); padRebindAction = null; buildControlsList(); }
+        function testRumble() { padActive = true; padRumble(RUMBLE.clear); }
+        window.openControls = openControls;
+        window.closeControls = closeControls;
+        window.startRebind = startRebind;
+        window.resetBinds = resetBinds;
+        window.testRumble = testRumble;
 
         function padPlace() {
             const piece = queue[0];
