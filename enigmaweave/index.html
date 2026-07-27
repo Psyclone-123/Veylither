@@ -296,7 +296,8 @@
         .menu-link-btn:hover { color: #fff; border-color: #62cdff; }
 
         /* ===== HOME SCREEN ===== */
-        #home-screen, #skins-panel, #settings-panel, #multi-setup, #controls-panel {
+        #home-screen, #skins-panel, #settings-panel, #multi-setup, #controls-panel,
+        #achievements-panel, #versus-setup {
             position: absolute;
             inset: 0;
             z-index: 8;
@@ -408,6 +409,32 @@
             grid-template-columns: repeat(2, 1fr);
             gap: 14px;
         }
+        .ach-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            max-height: 60vh;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+        .ach-card {
+            background: rgba(20, 14, 40, 0.7);
+            border: 2px solid #2e2a4a;
+            border-radius: 10px;
+            padding: 12px;
+            min-width: 130px;
+            opacity: 0.5;
+            filter: grayscale(0.6);
+        }
+        .ach-card.unlocked {
+            opacity: 1;
+            filter: none;
+            border-color: #00ffcc;
+            box-shadow: 0 0 14px rgba(0, 255, 204, 0.3);
+        }
+        .ach-icon { font-size: 1.6rem; color: #62cdff; margin-bottom: 4px; }
+        .ach-name { font-weight: 800; font-size: 0.9rem; letter-spacing: 1px; color: #cfe6ff; }
+        .ach-desc { font-size: 0.72rem; color: #8b9bb4; margin-top: 4px; line-height: 1.3; }
         .skin-card {
             background: rgba(20, 14, 40, 0.7);
             border: 2px solid #2e2a4a;
@@ -623,6 +650,7 @@
             .home-menu { width: 80vw; max-width: 320px; }
             .home-btn { padding: 18px 18px; font-size: 1rem; }
             .skin-grid { grid-template-columns: repeat(2, 1fr); }
+            .ach-grid { grid-template-columns: 1fr; max-height: 50vh; }
             #message { bottom: 64px; font-size: 0.9rem; }
             #pause-btn { top: 12px; right: 12px; }
             .panel-inner { padding: 24px 20px; }
@@ -890,11 +918,22 @@
             <button class="home-btn" onclick="openSkins()">◆ SKINS</button>
             <button class="home-btn" onclick="openSettings()">⚙ SETTINGS</button>
             <button class="home-btn" onclick="openLeaderboard()">🏆 LEADERBOARD</button>
+            <button class="home-btn" onclick="openAchievements()">⚑ ACHIEVEMENTS</button>
             <button class="home-btn" onclick="openMultiSetup()">⚇ MULTIPLAYER</button>
+            <button class="home-btn" onclick="openVersusSetup()">⚔ VERSUS (ONLINE)</button>
         </div>
         <div class="home-footer">
             <button class="credits-link" onclick="openCredits()">CREDITS</button>
             <div class="copyright">&copy; 2026 Morphed</div>
+        </div>
+    </div>
+
+    <!-- ACHIEVEMENTS PANEL -->
+    <div id="achievements-panel">
+        <div class="panel-inner">
+            <h2 class="panel-title">ACHIEVEMENTS</h2>
+            <div id="achievements-grid" class="ach-grid"></div>
+            <button class="home-btn back-btn" onclick="showHome()">← BACK</button>
         </div>
     </div>
 
@@ -905,6 +944,18 @@
             <div class="spark-balance">✦ <span class="spark-balance-val">0</span> Sparks</div>
             <div id="skin-msg" class="skin-msg"></div>
             <div id="skin-grid" class="skin-grid"></div>
+            <button class="home-btn back-btn" onclick="showHome()">← BACK</button>
+        </div>
+    </div>
+
+    <!-- VERSUS (LIVE ONLINE) SETUP -->
+    <div id="versus-setup">
+        <div class="panel-inner">
+            <h2 class="panel-title">VERSUS</h2>
+            <p class="mp-sub">Live online 1v1. You share a board and trade 30-second turns for an 8-minute match. A missed or failed turn costs you points but doesn't end the match — most points when the clock runs out wins. Your equipped skin is shown to your opponent.</p>
+            <div id="versus-status" class="mp-sub"></div>
+            <button class="home-btn primary" id="versus-find-btn" onclick="startVersusSearch()">▶ FIND MATCH</button>
+            <button class="home-btn" id="versus-cancel-btn" style="display:none" onclick="cancelVersusSearch()">CANCEL</button>
             <button class="home-btn back-btn" onclick="showHome()">← BACK</button>
         </div>
     </div>
@@ -928,6 +979,10 @@
     <div id="settings-panel">
         <div class="panel-inner">
             <h2 class="panel-title">SETTINGS</h2>
+            <div class="settings-row">
+                <span>Display Name</span>
+                <button class="toggle-btn" id="display-name-btn" onclick="editDisplayName()">PLAYER</button>
+            </div>
             <div class="settings-row">
                 <span>Background Music</span>
                 <button class="toggle-btn" onclick="toggleMusic()">TOGGLE</button>
@@ -1020,6 +1075,7 @@
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
     <script>
         // ==========================================
         // 1. EULERIAN FLUID SIMULATION (from Blocks.html)
@@ -1179,6 +1235,7 @@
         let queue = [];
         let heldPiece = null;
         let canHold = true;
+        let usedUndoThisRun = false;   // for the "clear without undo" achievement
 
         let boardPixelSize, cellSize, boardX, boardY;
         let holdBoxX, holdBoxY, holdBoxSize;
@@ -1191,6 +1248,7 @@
         const THEMES = [
             {
                 id: 'cyber', name: 'CYBER',
+                sfx: 'cyber',
                 litCell: '#f8f8ff', unlitCell: '#0f0c1f',
                 litGlow: '#ffffff', unlitGlow: '#62cdff',
                 accent: '#62cdff', accent2: '#f271ff',
@@ -1199,6 +1257,7 @@
             },
             {
                 id: 'vapor', name: 'VAPORWAVE',
+                sfx: 'cyber',
                 litCell: '#ffe3ff', unlitCell: '#1a0a2e',
                 litGlow: '#ff9de2', unlitGlow: '#7b5cff',
                 accent: '#ff6ec7', accent2: '#7af9ff',
@@ -1366,7 +1425,23 @@
             const s = sparks.toLocaleString();
             document.querySelectorAll('.spark-balance-val').forEach(el => { el.textContent = s; });
         }
-        function addSparks(n) { sparks += n; saveSparks(); updateSparkDisplays(); }
+        function addSparks(n) {
+            sparks += n; saveSparks(); updateSparkDisplays();
+            if (n > 0) {
+                // statBump/unlockAchievement are declared later in this script
+                // (in the ACHIEVEMENTS block) but function declarations are
+                // hoisted, so this resolves fine by the time addSparks is
+                // actually called during gameplay.
+                const total = statBump(LS_STAT_LIFETIME_SPARKS, n);
+                if (total >= 1000) unlockAchievement('sparks_1000');
+                if (total >= 5000) unlockAchievement('sparks_5000');
+            }
+            if (n > 0 && sb) {
+                ensureIdentity().then(function (uid) {
+                    if (uid) sb.rpc('mp_add_lifetime_sparks', { p_amount: n }).catch(function () {});
+                });
+            }
+        }
 
         // Award Sparks at end of run. Uses a per-run high-water mark so undoing
         // out of a game over and dying again can't double-pay for the same score.
@@ -1400,6 +1475,7 @@
             updateSparkDisplays();
             showSkinMsg('Unlocked ' + THEMES.find(t => t.id === id).name + '!');
             haptic(HAPTICS.clear);
+            checkAchievements('skin_owned');
             return true;
         }
 
@@ -1412,6 +1488,189 @@
             setTheme(i);
             buildSkinList();
         }
+
+        // ==========================================
+        // IDENTITY — Supabase anonymous auth
+        // Every device signs in anonymously on boot and gets a real
+        // auth.uid(). That id backs achievements sync and Versus mode.
+        // It can later be upgraded to a permanent email/social login via
+        // supabase.auth.linkIdentity() without changing anything else here
+        // (profiles.id keeps pointing at the same auth.users row).
+        // ==========================================
+        const EW_SUPABASE_URL = 'https://uvdtkrcwezvihcjdhsnz.supabase.co';
+        const EW_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV2ZHRrcmN3ZXp2aWhjamRoc256Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4MzA3MzUsImV4cCI6MjA5NzQwNjczNX0.zg7ty-S9_haByreO4F1HoftkG5er-DK-AwtaVufycNM';
+        const sb = (window.supabase && window.supabase.createClient)
+            ? window.supabase.createClient(EW_SUPABASE_URL, EW_SUPABASE_ANON_KEY)
+            : null;
+
+        const LS_DISPLAY_NAME = 'ew_display_name';
+        function loadDisplayName() {
+            let n = EWStore.get(LS_DISPLAY_NAME);
+            if (!n) {
+                n = 'PLAYER' + Math.floor(1000 + Math.random() * 9000);
+                EWStore.set(LS_DISPLAY_NAME, n);
+            }
+            return n;
+        }
+        let displayName = loadDisplayName();
+        function saveDisplayName(n) {
+            displayName = String(n || 'PLAYER').slice(0, 12).toUpperCase();
+            EWStore.set(LS_DISPLAY_NAME, displayName);
+            if (identityReady) syncProfile();
+            return displayName;
+        }
+
+        let identityReady = false;
+        let identityUserId = null;
+        // Resolves once signed in (anonymously) and the profiles row exists.
+        // Everything that needs an identity (achievements sync, Versus) should
+        // `await ensureIdentity()` first — safe to call many times.
+        let identityPromise = null;
+        function ensureIdentity() {
+            if (!sb) return Promise.resolve(null);
+            if (identityPromise) return identityPromise;
+            identityPromise = (async function () {
+                try {
+                    let { data: { session } } = await sb.auth.getSession();
+                    if (!session) {
+                        const { data, error } = await sb.auth.signInAnonymously();
+                        if (error) throw error;
+                        session = data.session;
+                    }
+                    identityUserId = session.user.id;
+                    identityReady = true;
+                    await syncProfile();
+                    return identityUserId;
+                } catch (e) {
+                    console.warn('Identity bootstrap failed (offline?):', e);
+                    return null;
+                }
+            })();
+            return identityPromise;
+        }
+        function syncProfile() {
+            if (!sb || !identityUserId) return Promise.resolve();
+            return sb.from('profiles').upsert({ id: identityUserId, display_name: displayName })
+                .then(function (r) { if (r.error) console.warn('profile sync failed', r.error); })
+                .catch(function () {});
+        }
+
+        // ==========================================
+        // ACHIEVEMENTS
+        // Unlocks are stored locally first (instant, works offline) and
+        // mirrored to Supabase best-effort so they survive a reinstall once
+        // the player has a persistent identity. `stat_*` counters are the
+        // lifetime tallies some achievements gate on.
+        // ==========================================
+        const ACHIEVEMENTS = [
+            { id: 'first_clear',    name: 'First Clear',      desc: 'Blackout or whiteout the board once.',            icon: '◆' },
+            { id: 'clear_10',       name: 'Inverter',         desc: 'Clear the board 10 times, lifetime.',              icon: '◆' },
+            { id: 'clear_50',       name: 'Grid Master',      desc: 'Clear the board 50 times, lifetime.',              icon: '✦' },
+            { id: 'score_5k',       name: 'Getting Started',  desc: 'Score 5,000 in a single run.',                     icon: '★' },
+            { id: 'score_20k',      name: 'High Roller',      desc: 'Score 20,000 in a single run.',                    icon: '★' },
+            { id: 'mult_5x',        name: 'Momentum',         desc: 'Reach a 5x multiplier in a run.',                  icon: '⚡' },
+            { id: 'mult_10x',       name: 'Unstoppable',      desc: 'Reach a 10x multiplier in a run.',                 icon: '⚡' },
+            { id: 'tough_10',       name: 'Tight Fit',        desc: 'Land 10 tough/awkward piece placements, lifetime.', icon: '▣' },
+            { id: 'all_skins',      name: 'Collector',        desc: 'Own every skin.',                                  icon: '⌘' },
+            { id: 'sparks_1000',    name: 'Spark Saver',      desc: 'Earn 1,000 Sparks, lifetime.',                     icon: '✦' },
+            { id: 'sparks_5000',    name: 'Spark Hoarder',    desc: 'Earn 5,000 Sparks, lifetime.',                     icon: '✦' },
+            { id: 'no_undo_clear',  name: 'Purist',           desc: 'Clear the board in a run without using undo.',     icon: '◇' },
+            { id: 'versus_win',     name: 'Duelist',          desc: 'Win a Versus match.',                              icon: '⚔' },
+            { id: 'versus_comeback',name: 'Comeback Kid',     desc: 'Win a Versus match after taking a fail penalty.',  icon: '⚔' }
+        ];
+        const LS_ACHIEVEMENTS = 'ew_achievements';
+        const LS_STAT_CLEARS = 'ew_stat_clears';
+        const LS_STAT_TOUGH = 'ew_stat_tough';
+        const LS_STAT_LIFETIME_SPARKS = 'ew_stat_lifetime_sparks';
+
+        function loadAchievements() {
+            try { const a = JSON.parse(EWStore.get(LS_ACHIEVEMENTS)); return Array.isArray(a) ? a : []; }
+            catch (e) { return []; }
+        }
+        let unlockedAchievements = loadAchievements();
+        function saveAchievements() { EWStore.set(LS_ACHIEVEMENTS, JSON.stringify(unlockedAchievements)); }
+
+        function statGet(key) { const v = parseInt(EWStore.get(key), 10); return Number.isFinite(v) ? v : 0; }
+        function statBump(key, by) { const v = statGet(key) + (by || 1); EWStore.set(key, v); return v; }
+
+        function isAchievementUnlocked(id) { return unlockedAchievements.includes(id); }
+
+        function unlockAchievement(id) {
+            if (isAchievementUnlocked(id)) return;
+            const def = ACHIEVEMENTS.find(a => a.id === id);
+            if (!def) return;
+            unlockedAchievements.push(id);
+            saveAchievements();
+            showPopup('ACHIEVEMENT: ' + def.name.toUpperCase(), theme().accent);
+            haptic(HAPTICS.clear);
+            if (sb) {
+                ensureIdentity().then(function (uid) {
+                    if (!uid) return;
+                    sb.from('player_achievements').upsert({ profile_id: uid, achievement_id: id }, { onConflict: 'profile_id,achievement_id' })
+                        .catch(function () {});
+                });
+            }
+            const ap = document.getElementById('achievements-panel');
+            if (ap && ap.style.display === 'flex') buildAchievementsList();
+        }
+
+        // Central dispatcher — call after the relevant in-game event with any
+        // extra data the checks need.
+        function checkAchievements(event, payload) {
+            payload = payload || {};
+            switch (event) {
+                case 'clear': {
+                    const n = statBump(LS_STAT_CLEARS, 1);
+                    if (n >= 1) unlockAchievement('first_clear');
+                    if (n >= 10) unlockAchievement('clear_10');
+                    if (n >= 50) unlockAchievement('clear_50');
+                    if (!usedUndoThisRun) unlockAchievement('no_undo_clear');
+                    break;
+                }
+                case 'score': {
+                    if (payload.score >= 5000) unlockAchievement('score_5k');
+                    if (payload.score >= 20000) unlockAchievement('score_20k');
+                    break;
+                }
+                case 'multiplier': {
+                    if (payload.multiplier >= 5) unlockAchievement('mult_5x');
+                    if (payload.multiplier >= 10) unlockAchievement('mult_10x');
+                    break;
+                }
+                case 'tough_placement': {
+                    const n = statBump(LS_STAT_TOUGH, 1);
+                    if (n >= 10) unlockAchievement('tough_10');
+                    break;
+                }
+                case 'skin_owned': {
+                    if (THEMES.every(t => isOwned(t.id))) unlockAchievement('all_skins');
+                    break;
+                }
+                case 'versus_win': {
+                    unlockAchievement('versus_win');
+                    if (payload.tookPenalty) unlockAchievement('versus_comeback');
+                    break;
+                }
+            }
+        }
+
+        function buildAchievementsList() {
+            const grid = document.getElementById('achievements-grid');
+            if (!grid) return;
+            grid.innerHTML = ACHIEVEMENTS.map(function (a) {
+                const done = isAchievementUnlocked(a.id);
+                return '<div class="ach-card' + (done ? ' unlocked' : '') + '">' +
+                       '<div class="ach-icon">' + a.icon + '</div>' +
+                       '<div class="ach-name">' + escapeHtml(a.name) + '</div>' +
+                       '<div class="ach-desc">' + escapeHtml(a.desc) + '</div></div>';
+            }).join('');
+        }
+        function openAchievements() {
+            document.getElementById('home-screen').style.display = 'none';
+            document.getElementById('achievements-panel').style.display = 'flex';
+            buildAchievementsList();
+        }
+        window.openAchievements = openAchievements;
 
         // All pieces available immediately (score-based game, no levels)
         // Common pieces (frequent)
@@ -1630,7 +1889,13 @@
             // on a whiteout/blackout clear.
             independence: makeSfxSet(
                 'Independencesfx/fw_place1.wav', 'Independencesfx/fw_place2.wav',
-                'Independencesfx/fw_hold.wav', 'Independencesfx/fw_clear.wav', 0.8)
+                'Independencesfx/fw_hold.wav', 'Independencesfx/fw_clear.wav', 0.8),
+            // Cyber: shared by the CYBER and VAPORWAVE skins. One place clip
+            // reused for both slots (the pitch shift keeps it varied), a hold
+            // clip, and a clear clip for whiteout/blackout.
+            cyber: makeSfxSet(
+                'Cybersfx/Cyber_place.wav', 'Cybersfx/Cyber_place.wav',
+                'Cybersfx/Hold.wav', 'Cybersfx/Cyber_clear.wav', 0.75)
         };
 
         // Active set follows the current skin; unknown/absent keys use default.
@@ -1764,8 +2029,10 @@
             flameParticles = [];
             flood = null;
             crystals = null;
+            cyberBits = []; cyberRings = []; cyberSurge = null;
 
             runSparksAwarded = 0;          // fresh run -> Sparks payout resets
+            usedUndoThisRun = false;
             fillQueue();
             clearMessage();
             document.getElementById('game-over').style.display = 'none';
@@ -1863,6 +2130,7 @@
 
         function performPlacement(startRow, startCol, piece) {
             if (!piece) return;
+            if (gameMode === 'versus') { performVersusPlacement(startRow, startCol, piece); return; }
             // In multiplayer, only accept a placement during an active, unlocked turn.
             if (gameMode !== 'solo' && (gameMode !== 'multi' || turnLocked)) return;
             initAudio();
@@ -1913,7 +2181,22 @@
                     fireworkBurst(fx, fy);
                 }
             }
+            // Cyber / Vaporwave skins: a neon digital pulse at the piece centre.
+            else if (cyberSkinActive()) {
+                let sumR = 0, sumC = 0, n = 0;
+                for (let pr = 0; pr < piece.length; pr++)
+                    for (let pc = 0; pc < piece[pr].length; pc++)
+                        if (piece[pr][pc] === 1) { sumR += startRow + pr; sumC += startCol + pc; n++; }
+                if (n) {
+                    cyberPulse(boardX + (sumC / n + 0.5) * cellSize,
+                               boardY + (sumR / n + 0.5) * cellSize);
+                }
+            }
             score += (blocksPlaced * 10) * multiplier;
+            if (gameMode === 'solo') {
+                checkAchievements('score', { score: score });
+                checkAchievements('multiplier', { multiplier: multiplier });
+            }
             queue.splice(0, 1);
             fillQueue();
             canHold = true;
@@ -1923,6 +2206,7 @@
             if (pieceCellCount(piece) >= 5 || pieceSpan(piece) >= 5) {
                 const praise = ['TOUGH FIT!', 'MASTERFUL!', 'BIG PLAY!', 'CLEAN!'];
                 showPopup(praise[Math.floor(Math.random() * praise.length)], theme().accent);
+                checkAchievements('tough_placement');
             }
             checkWinCondition();
             updateBoardTension();          // adaptive-trigger stiffness from board state
@@ -1955,6 +2239,11 @@
                 // Score-based multiplier — uncapped, so it keeps climbing the
                 // longer the player keeps solving.
                 multiplier = 1 + Math.floor(score / 800);
+                checkAchievements('clear');
+                if (gameMode === 'solo') {
+                    checkAchievements('score', { score: score });
+                    checkAchievements('multiplier', { multiplier: multiplier });
+                }
 
                 let msg = (sum === 0) ? "BLACKED OUT!" : "WHITED OUT!";
                 showPopup(`${msg}  ${multiplier}x`, theme().valid);
@@ -1973,6 +2262,7 @@
                 else if (skin === 'gold') startFlood(FLOOD_BEER);
                 else if (skin === 'jade') startCrystalize();
                 else if (skin === 'independence') bigFireworksShow();
+                else if (skin === 'cyber' || skin === 'vapor') startCyberSurge();
 
                 resetUndo();               // a solve wipes the rewind history
 
@@ -2021,6 +2311,7 @@
         }
 
         function restartGame() {
+            if (gameMode === 'versus' || gameMode === 'versus-over') { showHome(); return; }  // no restarting a live opponent match — leave instead
             isGameOver = false;
             document.getElementById('game-over').style.display = 'none';
             startPlay();
@@ -2081,6 +2372,7 @@
                 for (let c = 0; c < BOARD_SIZE; c++) grid[r][c] = Math.random() > 0.5 ? 1 : 0;
             }
             flameParticles = []; flood = null; crystals = null; fireworks = []; rockets = [];
+            cyberBits = []; cyberRings = []; cyberSurge = null;
 
             // Build each player; fill their queue at their own (zero) score.
             players = [];
@@ -2217,6 +2509,326 @@
         window.exitMultiplayer = exitMultiplayer;
 
         // ==========================================
+        // VERSUS MODE — live online 1v1
+        // Shared board + turn order live in one Postgres row (mp_matches),
+        // mutated only through SECURITY DEFINER RPCs (see supabase/schema.sql)
+        // so two clients can never corrupt each other's placements. Realtime
+        // Postgres Changes pushes every update to both clients; a 1s local
+        // tick redraws the countdowns and calls the idempotent expiry RPC
+        // once either clock runs out. Reuses the existing grid/queue/held/
+        // score/multiplier globals and rendering code — from the renderer's
+        // point of view this looks just like solo/local-multiplayer.
+        // ==========================================
+        let versusMatch = null;            // last-known match row from the server
+        let versusMatchId = null;
+        let versusMyProfileId = null;
+        let versusChannel = null;
+        let versusAssignChannel = null;
+        let versusTickId = null;
+        let versusExpiryInFlight = false;
+        let versusTookPenalty = false;     // for the "Comeback Kid" achievement
+        let versusPrevMyScore = null;
+        let versusLocalDirty = false;      // true after a local hold not yet echoed by the server
+        let versusTurnColor = null;        // active player's skin accent, for the board-border indicator
+        let versusMatchTimeLeft = 0;
+        let versusTurnTimeLeft = 0;
+
+        function openVersusSetup() {
+            document.getElementById('home-screen').style.display = 'none';
+            document.getElementById('versus-setup').style.display = 'flex';
+            const st = document.getElementById('versus-status'); if (st) st.textContent = '';
+            document.getElementById('versus-find-btn').style.display = 'block';
+            document.getElementById('versus-cancel-btn').style.display = 'none';
+        }
+
+        function setVersusStatus(msg) {
+            const st = document.getElementById('versus-status');
+            if (st) st.textContent = msg;
+        }
+
+        function startVersusSearch() {
+            document.getElementById('versus-find-btn').style.display = 'none';
+            document.getElementById('versus-cancel-btn').style.display = 'block';
+            setVersusStatus('Connecting…');
+            ensureIdentity().then(function (uid) {
+                if (!uid) { setVersusStatus("Couldn't connect — check your internet connection."); resetVersusSetupButtons(); return; }
+                setVersusStatus('Searching for an opponent…');
+                sb.rpc('mp_try_match', { p_display_name: displayName, p_skin_id: theme().id }).then(function (res) {
+                    if (res.error) { setVersusStatus('Matchmaking error: ' + res.error.message); resetVersusSetupButtons(); return; }
+                    const d = res.data;
+                    if (d && d.matched) {
+                        setVersusStatus('Opponent found!');
+                        enterVersusMatch(d.match_id);
+                    } else {
+                        subscribeVersusAssignment(uid);
+                    }
+                }).catch(function (e) {
+                    setVersusStatus('Matchmaking error: ' + e.message);
+                    resetVersusSetupButtons();
+                });
+            });
+        }
+
+        function resetVersusSetupButtons() {
+            document.getElementById('versus-find-btn').style.display = 'block';
+            document.getElementById('versus-cancel-btn').style.display = 'none';
+        }
+
+        function subscribeVersusAssignment(uid) {
+            cleanupAssignChannel();
+            versusAssignChannel = sb.channel('mp-assign-' + uid)
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'mp_assignments', filter: 'profile_id=eq.' + uid },
+                    function (payload) {
+                        const matchId = payload.new.match_id;
+                        cleanupAssignChannel();
+                        setVersusStatus('Opponent found!');
+                        enterVersusMatch(matchId);
+                    })
+                .subscribe();
+        }
+        function cleanupAssignChannel() {
+            if (versusAssignChannel) { sb.removeChannel(versusAssignChannel); versusAssignChannel = null; }
+        }
+
+        function cancelVersusSearch() {
+            if (sb) sb.rpc('mp_leave_queue').catch(function () {});
+            cleanupAssignChannel();
+            resetVersusSetupButtons();
+            setVersusStatus('');
+        }
+
+        function enterVersusMatch(matchId) {
+            cleanupAssignChannel();
+            versusMatchId = matchId;
+            ensureIdentity().then(function (uid) {
+                versusMyProfileId = uid;
+                sb.from('mp_matches').select('*').eq('id', matchId).single().then(function (r) {
+                    if (r.error || !r.data) { showMessage('Could not load match.'); showHome(); return; }
+
+                    gameMode = 'versus';
+                    versusTookPenalty = false;
+                    versusPrevMyScore = 0;
+                    versusLocalDirty = false;
+                    score = 0; multiplier = 1; heldPiece = null; canHold = true;
+                    queue = [];
+                    for (let i = 0; i < QUEUE_SIZE; i++) queue.push(pickNextPiece());
+
+                    sb.rpc('mp_join_ready', { p_match_id: matchId, p_queue: queue, p_held: null }).then(function (r2) {
+                        applyVersusMatchState((r2 && r2.data) || r.data);
+                        subscribeVersusMatch(matchId);
+                        enterVersusScreen();
+                        startVersusTick();
+                    });
+                });
+            });
+        }
+
+        function subscribeVersusMatch(matchId) {
+            if (versusChannel) { sb.removeChannel(versusChannel); versusChannel = null; }
+            versusChannel = sb.channel('mp-match-' + matchId)
+                .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'mp_matches', filter: 'id=eq.' + matchId },
+                    function (payload) { applyVersusMatchState(payload.new); })
+                .subscribe();
+        }
+
+        // Merge a fresh match row from the server into local play state. Score
+        // and the shared grid/turn are always taken from the server (only it
+        // ever changes them); this player's own queue/held/can_hold are only
+        // pulled in when there's no un-synced local hold pending, so a hold
+        // can't get clobbered by a realtime update that raced in first.
+        function applyVersusMatchState(row) {
+            if (!row) return;
+            const wasStatus = versusMatch ? versusMatch.status : null;
+            versusMatch = row;
+            grid = row.grid;
+
+            const myIdx = row.players.findIndex(function (p) { return p.profile_id === versusMyProfileId; });
+            if (myIdx >= 0) {
+                const me = row.players[myIdx];
+                if (versusPrevMyScore != null && me.score < versusPrevMyScore) versusTookPenalty = true;
+                versusPrevMyScore = me.score;
+                score = me.score;
+                multiplier = me.multiplier;
+                if (!versusLocalDirty) {
+                    queue = me.queue || [];
+                    heldPiece = me.held || null;
+                    canHold = me.can_hold !== false;
+                }
+            }
+            updateVersusHUD();
+            if (row.status === 'finished' && wasStatus !== 'finished') endVersusMatch(row);
+        }
+
+        function startVersusTick() {
+            stopVersusTick();
+            versusTickId = setInterval(versusTick, 1000);
+            versusTick();
+        }
+        function stopVersusTick() {
+            if (versusTickId) { clearInterval(versusTickId); versusTickId = null; }
+        }
+        function versusTick() {
+            if (!versusMatch || versusMatch.status !== 'active') return;
+            const now = Date.now();
+            const turnStarted = new Date(versusMatch.turn_started_at).getTime();
+            const matchStarted = new Date(versusMatch.match_started_at).getTime();
+            versusTurnTimeLeft = Math.max(0, Math.ceil(versusMatch.turn_seconds - (now - turnStarted) / 1000));
+            versusMatchTimeLeft = Math.max(0, Math.ceil(versusMatch.match_seconds - (now - matchStarted) / 1000));
+            updateVersusHUD();
+            if ((versusTurnTimeLeft <= 0 || versusMatchTimeLeft <= 0) && !versusExpiryInFlight) {
+                versusExpiryInFlight = true;
+                sb.rpc('mp_expire_turn', { p_match_id: versusMatchId }).then(function (r) {
+                    versusExpiryInFlight = false;
+                    if (r && r.data) applyVersusMatchState(r.data);
+                }).catch(function () { versusExpiryInFlight = false; });
+            }
+        }
+
+        function formatMMSS(sec) {
+            sec = Math.max(0, Math.floor(sec));
+            const m = Math.floor(sec / 60), s = sec % 60;
+            return m + ':' + (s < 10 ? '0' : '') + s;
+        }
+
+        function updateVersusHUD() {
+            if (!versusMatch) return;
+            const timerEl = document.getElementById('mp-timer');
+            if (timerEl) timerEl.textContent = versusTurnTimeLeft + 's  ·  ' + formatMMSS(versusMatchTimeLeft) + ' left';
+
+            const board = document.getElementById('mp-scoreboard');
+            if (board) {
+                board.innerHTML = versusMatch.players.map(function (p, i) {
+                    const th = THEMES.find(function (t) { return t.id === p.skin; }) || THEMES[0];
+                    const active = (i === versusMatch.turn_index);
+                    return '<div class="mp-chip' + (active ? ' active' : '') + '">' +
+                           '<span class="mp-name" style="color:' + th.accent + '">' + escapeHtml(p.name) +
+                           (p.profile_id === versusMyProfileId ? ' (you)' : '') + '</span>' +
+                           '<span class="mp-score">' + p.score.toLocaleString() + '</span></div>';
+                }).join('');
+            }
+            const turnPlayer = versusMatch.players[versusMatch.turn_index];
+            const th = THEMES.find(function (t) { return t.id === (turnPlayer && turnPlayer.skin); });
+            versusTurnColor = th ? th.accent : null;
+        }
+
+        function enterVersusScreen() {
+            playTransitionSound();
+            if (!hasStartedMusic) startMusic();
+            appScreen = 'playing';
+            isGameOver = false;
+            isPaused = false;
+            flameParticles = []; flood = null; crystals = null; fireworks = []; rockets = [];
+            cyberBits = []; cyberRings = []; cyberSurge = null;
+            document.getElementById('home-screen').style.display = 'none';
+            document.getElementById('versus-setup').style.display = 'none';
+            document.getElementById('mp-results').style.display = 'none';
+            document.getElementById('ui-layer').style.display = 'flex';
+            document.getElementById('message').style.display = 'block';
+            document.getElementById('pause-menu').style.display = 'none';
+            document.getElementById('pause-btn').style.display = 'flex';
+            showRewindBar(false);   // no undo/redo in Versus
+            document.getElementById('multi-hud').style.display = 'flex';
+        }
+
+        function performVersusPlacement(startRow, startCol, piece) {
+            if (!versusMatch || versusMatch.status !== 'active') return;
+            const turnPlayer = versusMatch.players[versusMatch.turn_index];
+            if (!turnPlayer || turnPlayer.profile_id !== versusMyProfileId) {
+                showMessage('Not your turn');
+                return;
+            }
+            if (!canPlace(startRow, startCol, piece)) return;   // UI already checks this before calling, belt & suspenders
+
+            initAudio();
+            const newQueue = queue.slice(1);
+            while (newQueue.length < QUEUE_SIZE) newQueue.push(pickNextPiece());
+            const placedHeld = heldPiece, placedCanHold = true;
+
+            // Optimistic local update — the realtime echo will reconcile shortly.
+            queue = newQueue; canHold = true; preview = null; versusLocalDirty = false;
+            playPlaceSound();
+            haptic(HAPTICS.place);
+            if (pieceCellCount(piece) >= 5 || pieceSpan(piece) >= 5) {
+                showPopup(['TOUGH FIT!', 'MASTERFUL!', 'BIG PLAY!', 'CLEAN!'][Math.floor(Math.random() * 4)], theme().accent);
+                checkAchievements('tough_placement');
+            }
+            updateBoardTension();
+
+            sb.rpc('mp_place_piece', {
+                p_match_id: versusMatchId,
+                p_piece: piece,
+                p_row: startRow,
+                p_col: startCol,
+                p_new_queue: newQueue,
+                p_new_held: placedHeld,
+                p_new_can_hold: placedCanHold
+            }).then(function (r) {
+                if (r.error) { showMessage(r.error.message.replace(/^.*:\s*/, '')); return; }
+                if (r.data) {
+                    if (r.data.cleared) {
+                        const cx = boardX + boardPixelSize * 0.5, cy = boardY + boardPixelSize * 0.5;
+                        injectFluid(cx, cy, 1.0, 0.95, 0.6, 420, 7, 0, 0);
+                        playClearSound();
+                        haptic(HAPTICS.clear);
+                        showPopup((sumGrid(r.data.grid) === 0 ? 'BLACKED OUT!' : 'WHITED OUT!') + '  ' + (r.data.players[versusMatch.turn_index] || {}).multiplier + 'x', theme().valid);
+                        checkAchievements('clear');
+                    }
+                    applyVersusMatchState(r.data);
+                }
+            }).catch(function (e) { showMessage(e.message || 'Placement failed'); });
+        }
+        function sumGrid(g) {
+            let s = 0;
+            for (let r = 0; r < g.length; r++) for (let c = 0; c < g[r].length; c++) s += g[r][c];
+            return s;
+        }
+
+        function endVersusMatch(row) {
+            stopVersusTick();
+            if (versusChannel) { sb.removeChannel(versusChannel); versusChannel = null; }
+            gameMode = 'versus-over';
+            const ranked = row.players.map(function (p) { return { id: p.profile_id, name: p.name, score: p.score }; })
+                                       .sort(function (a, b) { return b.score - a.score; });
+            const top = ranked.length ? ranked[0].score : 0;
+            const winners = ranked.filter(function (r) { return r.score === top; });
+            const iWon = winners.length === 1 && winners[0].id === versusMyProfileId;
+            const title = winners.length > 1 ? 'TIE!' : (winners[0].id === versusMyProfileId ? 'YOU WIN!' : winners[0].name + ' WINS!');
+
+            document.getElementById('mp-results-title').textContent = title;
+            document.getElementById('mp-results-list').innerHTML = ranked.map(function (r, k) {
+                const mine = r.id === versusMyProfileId;
+                return '<div class="mp-result-row' + (winners.some(function (w) { return w.id === r.id; }) ? ' win' : '') + '">' +
+                       '<span>' + (k + 1) + '. ' + escapeHtml(r.name) + (mine ? ' (you)' : '') + '</span>' +
+                       '<span>' + r.score.toLocaleString() + '</span></div>';
+            }).join('');
+            document.getElementById('pause-btn').style.display = 'none';
+            document.getElementById('multi-hud').style.display = 'none';
+            document.getElementById('mp-results').style.display = 'flex';
+
+            const playAgainBtn = document.querySelector('#mp-results .play-again-btn');
+            if (playAgainBtn) playAgainBtn.onclick = function () { openVersusSetup(); };
+
+            if (iWon) checkAchievements('versus_win', { tookPenalty: versusTookPenalty });
+        }
+
+        function exitVersusMatch() {
+            stopVersusTick();
+            if (versusChannel) { sb.removeChannel(versusChannel); versusChannel = null; }
+            cleanupAssignChannel();
+            if (gameMode === 'versus' || gameMode === 'versus-over') gameMode = 'solo';
+            versusMatch = null; versusMatchId = null;
+            const h = document.getElementById('multi-hud'); if (h) h.style.display = 'none';
+            const r = document.getElementById('mp-results'); if (r) r.style.display = 'none';
+            const playAgainBtn = document.querySelector('#mp-results .play-again-btn');
+            if (playAgainBtn) playAgainBtn.onclick = function () { openMultiSetup(); };  // restore local-MP default
+        }
+
+        window.openVersusSetup = openVersusSetup;
+        window.startVersusSearch = startVersusSearch;
+        window.cancelVersusSearch = cancelVersusSearch;
+        window.exitVersusMatch = exitVersusMatch;
+
+        // ==========================================
         // UNDO / REDO  — rewind up to 3 moves. Every placement and hold pushes a
         // full state snapshot first; the stacks RESET on every board clear, so
         // you can never rewind past a solve.
@@ -2261,6 +2873,7 @@
             redoStack.push(snapshotState());
             if (redoStack.length > MAX_UNDO) redoStack.shift();
             restoreState(undoStack.pop());
+            usedUndoThisRun = true;         // disqualifies the "no-undo clear" achievement this run
             isGameOver = false;             // rewinding can rescue a game over
             document.getElementById('game-over').style.display = 'none';
             haptic(HAPTICS.hold);
@@ -2333,10 +2946,17 @@
         // Hold logic (matches Morphed)
         function holdCurrentPiece() {
             if (queue.length === 0) return;
-            if (gameMode !== 'solo' && (gameMode !== 'multi' || turnLocked)) return;
+            if (gameMode !== 'solo' && (gameMode !== 'multi' || turnLocked) && gameMode !== 'versus') return;
+            if (gameMode === 'versus') {
+                if (!versusMatch || versusMatch.status !== 'active') return;
+                if (versusMatch.players[versusMatch.turn_index].profile_id !== versusMyProfileId) {
+                    showMessage("Not your turn");
+                    return;
+                }
+            }
 
             initAudio();
-            pushUndo();                    // snapshot pre-hold for rewind
+            if (gameMode !== 'versus') pushUndo();   // no rewind history in Versus
 
             const current = queue[0];
 
@@ -2356,6 +2976,9 @@
             if (gameMode === 'multi') {
                 updateMultiHUD();
                 if (activePlayerStuck()) failActivePlayer();
+            } else if (gameMode === 'versus') {
+                versusLocalDirty = true;   // don't let the next realtime sync clobber this
+                updateVersusHUD();
             } else {
                 checkGameOver();
             }
@@ -2723,10 +3346,19 @@
         }
 
         function drawBoard() {
-            // Board outer neon frame
-            ctx.strokeStyle = theme().accent;
-            ctx.lineWidth = 2.5;
+            // Board outer neon frame — in Versus this is recoloured to whichever
+            // player's skin/turn is active, so both players can tell whose go
+            // it is at a glance without reading the HUD.
+            const versusActive = (gameMode === 'versus' && versusTurnColor);
+            ctx.strokeStyle = versusActive ? versusTurnColor : theme().accent;
+            ctx.lineWidth = versusActive ? 5 : 2.5;
+            if (versusActive) {
+                ctx.save();
+                ctx.shadowColor = versusTurnColor;
+                ctx.shadowBlur = 16;
+            }
             ctx.strokeRect(boardX - 1, boardY - 1, boardPixelSize + 2, boardPixelSize + 2);
+            if (versusActive) ctx.restore();
 
             // Inner background — semi-opaque; a little fluid still glows through.
             ctx.fillStyle = 'rgba(10, 8, 24, 0.5)';
@@ -3281,6 +3913,181 @@
             ctx.restore();
         }
 
+        // --- Cyber VFX (CYBER + VAPORWAVE skins) ----------------------------
+        // A neon "digital" toolkit shared by both synthwave skins. On every
+        // placement a pulse fires: an expanding neon square ring plus a scatter
+        // of streaking "data-bits" (axis-biased so they read like data racing
+        // along circuit traces). On a whiteout/blackout a full "system surge"
+        // sweeps a bright scanline down the board, lighting a neon grid behind
+        // it and flickering chromatic RGB-split glitch bars. Colours follow the
+        // skin accents (cyan/magenta on CYBER, pink/cyan on VAPORWAVE) so no
+        // per-skin branching is needed. Everything draws additively so it glows
+        // over the board and fluid, like the flame/firework effects.
+        let cyberBits = [];    // streaking square data-bits
+        let cyberRings = [];   // expanding neon square rings
+        let cyberSurge = null; // big whiteout/blackout sweep state
+
+        function cyberSkinActive() {
+            const id = theme().id;
+            return id === 'cyber' || id === 'vapor';
+        }
+        function cyberPalette() {
+            return [hexToRgb(theme().accent), hexToRgb(theme().accent2), hexToRgb(theme().litGlow)];
+        }
+
+        // Scatter data-bits from (x, y). Directions are mostly axis-aligned
+        // (with an occasional free angle) for a circuit-trace feel.
+        function spawnCyberBits(x, y, count, speed, pal) {
+            for (let i = 0; i < count; i++) {
+                let ang = (Math.floor(Math.random() * 4) * Math.PI / 2)
+                          + (Math.random() - 0.5) * 0.5;
+                if (Math.random() < 0.18) ang = Math.random() * Math.PI * 2;
+                const spd = speed * (0.5 + Math.random() * 0.9);
+                const col = pal[(Math.random() * pal.length) | 0];
+                cyberBits.push({
+                    x, y,
+                    vx: Math.cos(ang) * spd,
+                    vy: Math.sin(ang) * spd,
+                    life: 1,
+                    decay: 0.02 + Math.random() * 0.02,
+                    len: 6 + Math.random() * 12,          // motion-trail length
+                    w: 1.5 + Math.random() * 2.5,         // bit thickness
+                    r: col.r, g: col.g, b: col.b
+                });
+            }
+        }
+
+        // Placement pulse: a neon square ring + a small burst of data-bits.
+        function cyberPulse(x, y) {
+            const pal = cyberPalette();
+            cyberRings.push({ x, y, t: 0, dur: 0.5, max: cellSize * 2.6,
+                              r: pal[0].r, g: pal[0].g, b: pal[0].b });
+            spawnCyberBits(x, y, 9, 4.2, pal);
+        }
+
+        // Whiteout/blackout: kick off the board surge + a central burst/ring.
+        function startCyberSurge() {
+            cyberSurge = { t: 0 };
+            const cx = boardX + boardPixelSize * 0.5;
+            const cy = boardY + boardPixelSize * 0.5;
+            const pal = cyberPalette();
+            spawnCyberBits(cx, cy, 40, 7, pal);
+            cyberRings.push({ x: cx, y: cy, t: 0, dur: 0.9, max: boardPixelSize * 0.75,
+                              r: pal[0].r, g: pal[0].g, b: pal[0].b });
+        }
+
+        function updateCyberRings() {
+            if (!cyberRings.length) return;
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            for (let i = cyberRings.length - 1; i >= 0; i--) {
+                const g = cyberRings[i];
+                g.t += 1 / 60;
+                const p = g.t / g.dur;
+                if (p >= 1) { cyberRings.splice(i, 1); continue; }
+                const ease = 1 - Math.pow(1 - p, 3);     // fast-out expansion
+                const half = g.max * ease;
+                const a = (1 - p) * 0.9;
+                ctx.strokeStyle = `rgba(${g.r},${g.g},${g.b},${a})`;
+                ctx.lineWidth = 2 + (1 - p) * 2;
+                ctx.shadowColor = `rgba(${g.r},${g.g},${g.b},${a})`;
+                ctx.shadowBlur = 16;
+                ctx.strokeRect(g.x - half, g.y - half, half * 2, half * 2);
+            }
+            ctx.restore();
+        }
+
+        function updateCyberBits() {
+            if (!cyberBits.length) return;
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.lineCap = 'round';
+            for (let i = cyberBits.length - 1; i >= 0; i--) {
+                const b = cyberBits[i];
+                b.x += b.vx; b.y += b.vy;
+                b.vx *= 0.92; b.vy *= 0.92;              // decelerate into a stop
+                b.life -= b.decay;
+                if (b.life <= 0) { cyberBits.splice(i, 1); continue; }
+                const sp = Math.hypot(b.vx, b.vy) || 0.001;
+                const ux = b.vx / sp, uy = b.vy / sp;
+                const tl = b.len * b.life;
+                const a = Math.min(1, b.life * 1.2);
+                ctx.strokeStyle = `rgba(${b.r},${b.g},${b.b},${a})`;   // glowing trail
+                ctx.lineWidth = b.w;
+                ctx.beginPath();
+                ctx.moveTo(b.x, b.y);
+                ctx.lineTo(b.x - ux * tl, b.y - uy * tl);
+                ctx.stroke();
+                ctx.fillStyle = `rgba(255,255,255,${a})`;              // hot square head
+                ctx.fillRect(b.x - b.w * 0.5, b.y - b.w * 0.5, b.w, b.w);
+            }
+            ctx.restore();
+        }
+
+        // Big board surge: a bright scanline sweeps down the board, lighting a
+        // neon grid behind it and flickering chromatic glitch bars as it goes.
+        function updateCyberSurge() {
+            if (!cyberSurge) return;
+            cyberSurge.t += 1 / 60;
+            const DUR = 1.1;
+            if (cyberSurge.t > DUR) { cyberSurge = null; return; }
+            const pal = cyberPalette();
+            const c0 = pal[0], c1 = pal[1];
+            const prog = cyberSurge.t / DUR;
+            const sweepY = boardY + prog * boardPixelSize;
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(boardX, boardY, boardPixelSize, boardPixelSize);
+            ctx.clip();
+            ctx.globalCompositeOperation = 'lighter';
+
+            // neon grid revealed above the sweep line, fading over the effect
+            const gridA = 0.18 * (1 - prog * 0.5);
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = `rgba(${c1.r},${c1.g},${c1.b},${gridA})`;
+            for (let gx = boardX; gx <= boardX + boardPixelSize + 1; gx += cellSize) {
+                ctx.beginPath(); ctx.moveTo(gx, boardY); ctx.lineTo(gx, sweepY); ctx.stroke();
+            }
+            for (let gy = boardY; gy <= sweepY; gy += cellSize) {
+                ctx.beginPath(); ctx.moveTo(boardX, gy); ctx.lineTo(boardX + boardPixelSize, gy); ctx.stroke();
+            }
+
+            // bright sweep line + glow trail behind it
+            const trail = ctx.createLinearGradient(0, sweepY - 60, 0, sweepY + 6);
+            trail.addColorStop(0, `rgba(${c0.r},${c0.g},${c0.b},0)`);
+            trail.addColorStop(1, `rgba(${c0.r},${c0.g},${c0.b},0.35)`);
+            ctx.fillStyle = trail;
+            ctx.fillRect(boardX, sweepY - 60, boardPixelSize, 66);
+            ctx.fillStyle = 'rgba(255,255,255,0.95)';
+            ctx.fillRect(boardX, sweepY - 2, boardPixelSize, 3);
+
+            // spit data-bits off the leading edge
+            if (Math.random() < 0.9) {
+                spawnCyberBits(boardX + Math.random() * boardPixelSize, sweepY, 2, 4, pal);
+            }
+
+            // chromatic glitch bars: thin slabs with an RGB channel split
+            if (Math.random() < 0.55) {
+                const by = boardY + Math.random() * boardPixelSize;
+                const bh = 3 + Math.random() * 10;
+                const off = 3 + Math.random() * 6;
+                ctx.globalAlpha = 0.5;
+                ctx.fillStyle = 'rgba(255,40,120,1)';   // magenta channel
+                ctx.fillRect(boardX - off, by, boardPixelSize, bh);
+                ctx.fillStyle = 'rgba(40,240,255,1)';   // cyan channel
+                ctx.fillRect(boardX + off, by, boardPixelSize, bh);
+                ctx.globalAlpha = 1;
+            }
+            ctx.restore();
+        }
+
+        function updateCyberFX() {
+            updateCyberSurge();
+            updateCyberRings();
+            updateCyberBits();
+        }
+
         function render() {
             pollGamepad();               // controller input (in menus and in game)
             stepPhysics(0.095);
@@ -3318,6 +4125,7 @@
             updateFlood();
             updateCrystals();
             updateFireworks();
+            updateCyberFX();
 
             requestAnimationFrame(render);
         }
@@ -3521,6 +4329,9 @@
             document.getElementById('settings-panel').style.display = 'none';
             document.getElementById('leaderboard-panel').style.display = 'none';
             document.getElementById('credits-panel').style.display = 'none';
+            document.getElementById('achievements-panel').style.display = 'none';
+            const vsSetupEl = document.getElementById('versus-setup'); if (vsSetupEl) vsSetupEl.style.display = 'none';
+            if (typeof exitVersusMatch === 'function') exitVersusMatch();
             document.getElementById('pause-menu').style.display = 'none';
             document.getElementById('pause-btn').style.display = 'none';
             showRewindBar(false);
@@ -3563,7 +4374,22 @@
             document.getElementById('home-screen').style.display = 'none';
             const cp = document.getElementById('controls-panel'); if (cp) cp.style.display = 'none';
             document.getElementById('settings-panel').style.display = 'flex';
+            const btn = document.getElementById('display-name-btn');
+            if (btn) btn.textContent = displayName;
         }
+
+        // Used for Versus matchmaking and the leaderboard/achievements sync —
+        // one name, editable from Settings.
+        function editDisplayName() {
+            const next = prompt('Display name (shown to opponents in Versus):', displayName);
+            if (next == null) return;
+            const trimmed = next.trim();
+            if (!trimmed) return;
+            saveDisplayName(trimmed);
+            const btn = document.getElementById('display-name-btn');
+            if (btn) btn.textContent = displayName;
+        }
+        window.editDisplayName = editDisplayName;
 
         function buildSkinList() {
             updateSparkDisplays();
@@ -3835,8 +4661,8 @@
         }
         function visibleMenuButtons() {
             const ids = ['pause-menu', 'game-over', 'mp-results', 'home-screen',
-                         'multi-setup', 'skins-panel', 'settings-panel',
-                         'leaderboard-panel', 'credits-panel'];
+                         'multi-setup', 'versus-setup', 'skins-panel', 'settings-panel',
+                         'leaderboard-panel', 'credits-panel', 'achievements-panel'];
             for (let k = 0; k < ids.length; k++) {
                 const el = document.getElementById(ids[k]);
                 if (el && el.style.display !== 'none' && el.offsetParent !== null) {
@@ -3904,7 +4730,7 @@
             padPrevDir = dirHeld;
 
             const inGame = appScreen === 'playing' && !isPaused && !isGameOver &&
-                           (gameMode === 'solo' || gameMode === 'multi');
+                           (gameMode === 'solo' || gameMode === 'multi' || gameMode === 'versus');
 
             if (inGame) {
                 if (padActive) {
@@ -4001,6 +4827,7 @@
         applyThemeBackground();
         showHome();
         render();
+        ensureIdentity();   // fire-and-forget; achievements/Versus await it when needed
 
         // Native durability: inside Capacitor, pull any values saved to native
         // Preferences (covers the rare case the WebView's localStorage was
