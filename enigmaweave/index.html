@@ -199,6 +199,8 @@
             text-shadow: 0 0 24px rgba(98, 205, 255, 0.4);
         }
         .pause-inner .home-btn { width: 100%; }
+        .home-btn.danger { border-color: #ff3b4e; color: #ff8a97; }
+        .home-btn.danger:hover { background: #ff3b4e; color: #0b0813; }
 
         #game-over {
             position: absolute;
@@ -952,7 +954,7 @@
     <div id="versus-setup">
         <div class="panel-inner">
             <h2 class="panel-title">VERSUS</h2>
-            <p class="mp-sub">Live online 1v1. You share a board and trade 30-second turns for an 8-minute match. A missed or failed turn costs you points but doesn't end the match — most points when the clock runs out wins. Your equipped skin is shown to your opponent.</p>
+            <p class="mp-sub">Live online 1v1. You share a board and trade turns for an 8-minute match. Each turn you get 30 seconds to place as many pieces as you can. Letting a whole turn pass without placing costs you 50 points, but never ends the match — most points when the clock runs out wins. Your equipped skin is shown to your opponent.</p>
             <div id="versus-status" class="mp-sub"></div>
             <button class="home-btn primary" id="versus-find-btn" onclick="startVersusSearch()">▶ FIND MATCH</button>
             <button class="home-btn" id="versus-cancel-btn" style="display:none" onclick="cancelVersusSearch()">CANCEL</button>
@@ -1069,7 +1071,8 @@
         <div class="pause-inner">
             <h2 class="pause-title">PAUSED</h2>
             <button class="home-btn primary" onclick="resumeGame()">▶ RESUME</button>
-            <button class="home-btn" onclick="restartGame()">↻ RESTART</button>
+            <button class="home-btn" id="pause-restart-btn" onclick="restartGame()">↻ RESTART</button>
+            <button class="home-btn danger" id="pause-forfeit-btn" style="display:none" onclick="forfeitVersusMatch()">⚑ FORFEIT MATCH</button>
             <button class="home-btn" id="pause-music-btn" onclick="togglePauseMusic()">♪ MUSIC</button>
             <button class="home-btn" onclick="showHome()">⌂ MAIN MENU</button>
         </div>
@@ -1324,7 +1327,21 @@
             }
         ];
         let currentThemeIndex = 0;
-        function theme() { return THEMES[currentThemeIndex]; }
+        // During a live Versus match the WHOLE board takes on whoever's turn it
+        // is — their skin's colours, sounds and effects — so you can see your
+        // opponent's skin in action on their go. Null outside of Versus play,
+        // where theme() just returns your own equipped skin. Set by
+        // updateVersusHUD() whenever the turn owner changes.
+        let versusTurnThemeIndex = null;
+        function theme() {
+            if (versusTurnThemeIndex != null && gameMode === 'versus' && appScreen === 'playing') {
+                return THEMES[versusTurnThemeIndex];
+            }
+            return THEMES[currentThemeIndex];
+        }
+        // Your own equipped skin, ignoring any Versus turn override — for
+        // anything that should always reflect YOU (menus, skin picker).
+        function ownTheme() { return THEMES[currentThemeIndex]; }
 
         // Screen state: 'home' | 'playing'  (game only runs input when playing)
         let appScreen = 'home';
@@ -2128,6 +2145,65 @@
             return false;
         }
 
+        // ===== SHARED SKIN EFFECTS =====
+        // Extracted so solo, local pass-and-play and online Versus all fire the
+        // exact same visuals/audio. Anything skin-flavoured on placement or on a
+        // board clear belongs in these two functions — never inline in a
+        // mode-specific placement path, or the modes drift apart.
+        function playPlacementEffects(startRow, startCol, piece) {
+            playPlaceSound();
+            haptic(HAPTICS.place);
+            // Vaporize the placed piece into the fluid sim: every filled cell
+            // releases a puff of skin-tinted vapour that rises and dissipates.
+            const vapA = hexToRgb(theme().accent);
+            const vapB = hexToRgb(theme().accent2);
+            for (let pr = 0; pr < piece.length; pr++) {
+                for (let pc = 0; pc < piece[pr].length; pc++) {
+                    if (piece[pr][pc] !== 1) continue;
+                    const sr = startRow + pr, sc = startCol + pc;
+                    if (sr < 0 || sr >= BOARD_SIZE || sc < 0 || sc >= BOARD_SIZE) continue;
+                    const px = boardX + (sc + 0.5) * cellSize;
+                    const py = boardY + (sr + 0.5) * cellSize;
+                    const col = Math.random() < 0.5 ? vapA : vapB;
+                    const vx = (Math.random() - 0.5) * 5;        // drifting wisps
+                    const vy = -(7 + Math.random() * 7);          // strong rise = vaporize
+                    injectFluid(px, py, col.r / 255, col.g / 255, col.b / 255, 550, 12, vx, vy);
+                }
+            }
+            // Piece centre, for the skins that anchor an effect there.
+            let sumR = 0, sumC = 0, n = 0;
+            for (let pr = 0; pr < piece.length; pr++)
+                for (let pc = 0; pc < piece[pr].length; pc++)
+                    if (piece[pr][pc] === 1) { sumR += startRow + pr; sumC += startCol + pc; n++; }
+            if (!n) return;
+            const fx = boardX + (sumC / n + 0.5) * cellSize;
+            const fy = boardY + (sumR / n + 0.5) * cellSize;
+            // Independence skin: pop a small firework at the placed piece's
+            // centre. (If this placement also solves the board, the big
+            // fireworks show in the clear effects takes over instead.)
+            if (theme().id === 'independence') fireworkBurst(fx, fy);
+            // Cyber / Vaporwave skins: a neon digital pulse at the piece centre.
+            else if (cyberSkinActive()) cyberPulse(fx, fy);
+        }
+
+        // Full clear celebration: fluid burst + audio + haptics + the active
+        // skin's signature effect (flames, flood, crystals, fireworks, surge).
+        function playClearEffects() {
+            const cx = boardX + boardPixelSize * 0.5;
+            const cy = boardY + boardPixelSize * 0.5;
+            injectFluid(cx, cy, 1.0, 0.95, 0.6, 420, 7, 0, 0);
+            injectFluid(cx - 40, cy - 30, 0.4, 1.0, 0.95, 280, 5, -8, -6);
+            playClearSound();
+            haptic(HAPTICS.clear);
+            const skin = theme().id;
+            if (skin === 'ember') emberFlameBurst();
+            else if (skin === 'toxic') startFlood(FLOOD_TOXIC);
+            else if (skin === 'gold') startFlood(FLOOD_BEER);
+            else if (skin === 'jade') startCrystalize();
+            else if (skin === 'independence') bigFireworksShow();
+            else if (skin === 'cyber' || skin === 'vapor') startCyberSurge();
+        }
+
         function performPlacement(startRow, startCol, piece) {
             if (!piece) return;
             if (gameMode === 'versus') { performVersusPlacement(startRow, startCol, piece); return; }
@@ -2148,50 +2224,7 @@
                     }
                 }
             }
-            playPlaceSound();
-            haptic(HAPTICS.place);
-            // Vaporize the placed piece into the fluid sim: every filled cell
-            // releases a puff of skin-tinted vapour that rises and dissipates.
-            const vapA = hexToRgb(theme().accent);
-            const vapB = hexToRgb(theme().accent2);
-            for (let pr = 0; pr < piece.length; pr++) {
-                for (let pc = 0; pc < piece[pr].length; pc++) {
-                    if (piece[pr][pc] !== 1) continue;
-                    const sr = startRow + pr, sc = startCol + pc;
-                    if (sr < 0 || sr >= BOARD_SIZE || sc < 0 || sc >= BOARD_SIZE) continue;
-                    const px = boardX + (sc + 0.5) * cellSize;
-                    const py = boardY + (sr + 0.5) * cellSize;
-                    const col = Math.random() < 0.5 ? vapA : vapB;
-                    const vx = (Math.random() - 0.5) * 5;        // drifting wisps
-                    const vy = -(7 + Math.random() * 7);          // strong rise = vaporize
-                    injectFluid(px, py, col.r / 255, col.g / 255, col.b / 255, 550, 12, vx, vy);
-                }
-            }
-            // Independence skin: pop a small firework at the placed piece's
-            // centre. (Skipped if this placement also solves the board — the
-            // big fireworks show in checkWinCondition takes over instead.)
-            if (theme().id === 'independence') {
-                let sumR = 0, sumC = 0, n = 0;
-                for (let pr = 0; pr < piece.length; pr++)
-                    for (let pc = 0; pc < piece[pr].length; pc++)
-                        if (piece[pr][pc] === 1) { sumR += startRow + pr; sumC += startCol + pc; n++; }
-                if (n) {
-                    const fx = boardX + (sumC / n + 0.5) * cellSize;
-                    const fy = boardY + (sumR / n + 0.5) * cellSize;
-                    fireworkBurst(fx, fy);
-                }
-            }
-            // Cyber / Vaporwave skins: a neon digital pulse at the piece centre.
-            else if (cyberSkinActive()) {
-                let sumR = 0, sumC = 0, n = 0;
-                for (let pr = 0; pr < piece.length; pr++)
-                    for (let pc = 0; pc < piece[pr].length; pc++)
-                        if (piece[pr][pc] === 1) { sumR += startRow + pr; sumC += startCol + pc; n++; }
-                if (n) {
-                    cyberPulse(boardX + (sumC / n + 0.5) * cellSize,
-                               boardY + (sumR / n + 0.5) * cellSize);
-                }
-            }
+            playPlacementEffects(startRow, startCol, piece);
             score += (blocksPlaced * 10) * multiplier;
             if (gameMode === 'solo') {
                 checkAchievements('score', { score: score });
@@ -2247,22 +2280,7 @@
 
                 let msg = (sum === 0) ? "BLACKED OUT!" : "WHITED OUT!";
                 showPopup(`${msg}  ${multiplier}x`, theme().valid);
-
-                // Big fluid burst
-                const cx = boardX + boardPixelSize * 0.5;
-                const cy = boardY + boardPixelSize * 0.5;
-                injectFluid(cx, cy, 1.0, 0.95, 0.6, 420, 7, 0, 0);
-                injectFluid(cx - 40, cy - 30, 0.4, 1.0, 0.95, 280, 5, -8, -6);
-
-                playClearSound();
-                haptic(HAPTICS.clear);
-                const skin = theme().id;
-                if (skin === 'ember') emberFlameBurst();
-                else if (skin === 'toxic') startFlood(FLOOD_TOXIC);
-                else if (skin === 'gold') startFlood(FLOOD_BEER);
-                else if (skin === 'jade') startCrystalize();
-                else if (skin === 'independence') bigFireworksShow();
-                else if (skin === 'cyber' || skin === 'vapor') startCyberSurge();
+                playClearEffects();
 
                 resetUndo();               // a solve wipes the rewind history
 
@@ -2553,7 +2571,7 @@
             ensureIdentity().then(function (uid) {
                 if (!uid) { setVersusStatus("Couldn't connect — check your internet connection."); resetVersusSetupButtons(); return; }
                 setVersusStatus('Searching for an opponent…');
-                sb.rpc('mp_try_match', { p_display_name: displayName, p_skin_id: theme().id }).then(function (res) {
+                sb.rpc('mp_try_match', { p_display_name: displayName, p_skin_id: ownTheme().id }).then(function (res) {
                     if (res.error) { setVersusStatus('Matchmaking error: ' + res.error.message); resetVersusSetupButtons(); return; }
                     const d = res.data;
                     if (d && d.matched) {
@@ -2636,11 +2654,51 @@
         // ever changes them); this player's own queue/held/can_hold are only
         // pulled in when there's no un-synced local hold pending, so a hold
         // can't get clobbered by a realtime update that raced in first.
-        function applyVersusMatchState(row) {
+        function applyVersusMatchState(row, fromSelf) {
             if (!row) return;
             const wasStatus = versusMatch ? versusMatch.status : null;
+            const prevGrid = grid;
+            const prevSum = (versusMatch && Array.isArray(prevGrid)) ? sumGrid(prevGrid) : null;
             versusMatch = row;
             grid = row.grid;
+
+            // Mirror the OPPONENT's move on our screen: diff the grid and fire
+            // the same vapour/skin effects over the cells they just flipped, so
+            // watching their turn looks as alive as taking your own. Skipped for
+            // our own placements (already played locally, would double up).
+            if (!fromSelf && Array.isArray(prevGrid) && prevGrid.length === BOARD_SIZE) {
+                const changed = [];
+                for (let r = 0; r < BOARD_SIZE; r++) {
+                    for (let c = 0; c < BOARD_SIZE; c++) {
+                        if (prevGrid[r] && prevGrid[r][c] !== row.grid[r][c]) changed.push([r, c]);
+                    }
+                }
+                if (changed.length) {
+                    const vapA = hexToRgb(theme().accent);
+                    const vapB = hexToRgb(theme().accent2);
+                    let sumR = 0, sumC = 0;
+                    changed.forEach(function (rc) {
+                        sumR += rc[0]; sumC += rc[1];
+                        const px = boardX + (rc[1] + 0.5) * cellSize;
+                        const py = boardY + (rc[0] + 0.5) * cellSize;
+                        const col = Math.random() < 0.5 ? vapA : vapB;
+                        injectFluid(px, py, col.r / 255, col.g / 255, col.b / 255, 550, 12,
+                                    (Math.random() - 0.5) * 5, -(7 + Math.random() * 7));
+                    });
+                    const fx = boardX + (sumC / changed.length + 0.5) * cellSize;
+                    const fy = boardY + (sumR / changed.length + 0.5) * cellSize;
+                    if (theme().id === 'independence') fireworkBurst(fx, fy);
+                    else if (cyberSkinActive()) cyberPulse(fx, fy);
+                    playPlaceSound();
+
+                    // Opponent solved the board — give them the full celebration too.
+                    const newSum = sumGrid(row.grid);
+                    if ((newSum === 0 || newSum === BOARD_SIZE * BOARD_SIZE) && prevSum !== newSum) {
+                        showPopup(newSum === 0 ? 'BLACKED OUT!' : 'WHITED OUT!', theme().valid);
+                        playClearEffects();
+                    }
+                }
+            }
 
             const myIdx = row.players.findIndex(function (p) { return p.profile_id === versusMyProfileId; });
             if (myIdx >= 0) {
@@ -2679,7 +2737,16 @@
                 versusExpiryInFlight = true;
                 sb.rpc('mp_expire_turn', { p_match_id: versusMatchId }).then(function (r) {
                     versusExpiryInFlight = false;
-                    if (r && r.data) applyVersusMatchState(r.data);
+                    if (!r || !r.data) return;
+                    // Penalty only lands when a whole turn passed with no
+                    // placement — tell the player why they lost points.
+                    if (r.data.failed_player && r.data.failed_player === versusMyProfileId) {
+                        showPopup('NO MOVE  −' + r.data.penalty, theme().invalid);
+                        haptic(HAPTICS.invalid);
+                    }
+                    applyVersusMatchState(r.data);
+                    const now2 = versusMatch && versusMatch.players[versusMatch.turn_index];
+                    if (now2 && now2.profile_id === versusMyProfileId) showMessage('Your turn');
                 }).catch(function () { versusExpiryInFlight = false; });
             }
         }
@@ -2706,9 +2773,20 @@
                            '<span class="mp-score">' + p.score.toLocaleString() + '</span></div>';
                 }).join('');
             }
+            // Hand the whole presentation over to whoever's turn it is: their
+            // skin drives the cells, effects, sounds and background until the
+            // turn passes back. Only re-applies when the owner actually changes,
+            // so we're not thrashing the body background every HUD tick.
             const turnPlayer = versusMatch.players[versusMatch.turn_index];
-            const th = THEMES.find(function (t) { return t.id === (turnPlayer && turnPlayer.skin); });
-            versusTurnColor = th ? th.accent : null;
+            const thIdx = THEMES.findIndex(function (t) { return t.id === (turnPlayer && turnPlayer.skin); });
+            const nextIdx = thIdx >= 0 ? thIdx : currentThemeIndex;
+            if (nextIdx !== versusTurnThemeIndex) {
+                versusTurnThemeIndex = nextIdx;
+                applyThemeBackground();
+                const mine = turnPlayer && turnPlayer.profile_id === versusMyProfileId;
+                showMessage(mine ? 'Your turn' : (turnPlayer.name + "'s turn — " + THEMES[nextIdx].name));
+            }
+            versusTurnColor = THEMES[versusTurnThemeIndex].accent;
         }
 
         function enterVersusScreen() {
@@ -2745,9 +2823,20 @@
             const placedHeld = heldPiece, placedCanHold = true;
 
             // Optimistic local update — the realtime echo will reconcile shortly.
+            // The grid is flipped locally too so the vapour/firework/pulse
+            // effects land on the same board state the player is looking at;
+            // the server's authoritative grid overwrites it moments later.
+            for (let r = 0; r < piece.length; r++) {
+                for (let c = 0; c < piece[r].length; c++) {
+                    if (piece[r][c] !== 1) continue;
+                    const tr = startRow + r, tc = startCol + c;
+                    if (tr >= 0 && tr < BOARD_SIZE && tc >= 0 && tc < BOARD_SIZE) {
+                        grid[tr][tc] = grid[tr][tc] === 1 ? 0 : 1;
+                    }
+                }
+            }
             queue = newQueue; canHold = true; preview = null; versusLocalDirty = false;
-            playPlaceSound();
-            haptic(HAPTICS.place);
+            playPlacementEffects(startRow, startCol, piece);
             if (pieceCellCount(piece) >= 5 || pieceSpan(piece) >= 5) {
                 showPopup(['TOUGH FIT!', 'MASTERFUL!', 'BIG PLAY!', 'CLEAN!'][Math.floor(Math.random() * 4)], theme().accent);
                 checkAchievements('tough_placement');
@@ -2766,14 +2855,12 @@
                 if (r.error) { showMessage(r.error.message.replace(/^.*:\s*/, '')); return; }
                 if (r.data) {
                     if (r.data.cleared) {
-                        const cx = boardX + boardPixelSize * 0.5, cy = boardY + boardPixelSize * 0.5;
-                        injectFluid(cx, cy, 1.0, 0.95, 0.6, 420, 7, 0, 0);
-                        playClearSound();
-                        haptic(HAPTICS.clear);
-                        showPopup((sumGrid(r.data.grid) === 0 ? 'BLACKED OUT!' : 'WHITED OUT!') + '  ' + (r.data.players[versusMatch.turn_index] || {}).multiplier + 'x', theme().valid);
+                        const me = r.data.players.find(function (p) { return p.profile_id === versusMyProfileId; }) || {};
+                        showPopup((sumGrid(r.data.grid) === 0 ? 'BLACKED OUT!' : 'WHITED OUT!') + '  ' + me.multiplier + 'x', theme().valid);
+                        playClearEffects();   // full skin celebration, same as solo
                         checkAchievements('clear');
                     }
-                    applyVersusMatchState(r.data);
+                    applyVersusMatchState(r.data, true);
                 }
             }).catch(function (e) { showMessage(e.message || 'Placement failed'); });
         }
@@ -2787,18 +2874,34 @@
             stopVersusTick();
             if (versusChannel) { sb.removeChannel(versusChannel); versusChannel = null; }
             gameMode = 'versus-over';
-            const ranked = row.players.map(function (p) { return { id: p.profile_id, name: p.name, score: p.score }; })
-                                       .sort(function (a, b) { return b.score - a.score; });
-            const top = ranked.length ? ranked[0].score : 0;
-            const winners = ranked.filter(function (r) { return r.score === top; });
+            applyThemeBackground();   // results screen shows YOUR skin again
+            const ranked = row.players.map(function (p) {
+                return { id: p.profile_id, name: p.name, score: p.score, forfeited: !!p.forfeited };
+            }).sort(function (a, b) { return b.score - a.score; });
+
+            // A forfeit sets winner_profile_id explicitly — that overrides the
+            // score ranking, since the quitter may well have been ahead.
+            let winners, title;
+            if (row.winner_profile_id) {
+                winners = ranked.filter(function (r) { return r.id === row.winner_profile_id; });
+                const quitter = ranked.find(function (r) { return r.forfeited; });
+                title = row.winner_profile_id === versusMyProfileId
+                    ? (quitter ? 'OPPONENT FORFEITED — YOU WIN!' : 'YOU WIN!')
+                    : 'YOU FORFEITED';
+            } else {
+                const top = ranked.length ? ranked[0].score : 0;
+                winners = ranked.filter(function (r) { return r.score === top; });
+                title = winners.length > 1 ? 'TIE!'
+                      : (winners[0].id === versusMyProfileId ? 'YOU WIN!' : winners[0].name + ' WINS!');
+            }
             const iWon = winners.length === 1 && winners[0].id === versusMyProfileId;
-            const title = winners.length > 1 ? 'TIE!' : (winners[0].id === versusMyProfileId ? 'YOU WIN!' : winners[0].name + ' WINS!');
 
             document.getElementById('mp-results-title').textContent = title;
             document.getElementById('mp-results-list').innerHTML = ranked.map(function (r, k) {
                 const mine = r.id === versusMyProfileId;
                 return '<div class="mp-result-row' + (winners.some(function (w) { return w.id === r.id; }) ? ' win' : '') + '">' +
-                       '<span>' + (k + 1) + '. ' + escapeHtml(r.name) + (mine ? ' (you)' : '') + '</span>' +
+                       '<span>' + (k + 1) + '. ' + escapeHtml(r.name) + (mine ? ' (you)' : '') +
+                       (r.forfeited ? ' — forfeit' : '') + '</span>' +
                        '<span>' + r.score.toLocaleString() + '</span></div>';
             }).join('');
             document.getElementById('pause-btn').style.display = 'none';
@@ -2817,16 +2920,50 @@
             cleanupAssignChannel();
             if (gameMode === 'versus' || gameMode === 'versus-over') gameMode = 'solo';
             versusMatch = null; versusMatchId = null;
+            versusTurnThemeIndex = null;   // hand the look back to your own skin
+            versusTurnColor = null;
+            applyThemeBackground();
             const h = document.getElementById('multi-hud'); if (h) h.style.display = 'none';
             const r = document.getElementById('mp-results'); if (r) r.style.display = 'none';
             const playAgainBtn = document.querySelector('#mp-results .play-again-btn');
             if (playAgainBtn) playAgainBtn.onclick = function () { openMultiSetup(); };  // restore local-MP default
         }
 
+        // Quit a live match. Hands the win to the opponent server-side (so
+        // their client gets a realtime 'finished' update and a proper results
+        // screen instead of hanging until the 8-minute clock expires), then
+        // drops back to the home screen.
+        function forfeitVersusMatch() {
+            if (gameMode !== 'versus' || !versusMatchId) { showHome(); return; }
+            if (!confirm('Forfeit this match? Your opponent will be awarded the win.')) return;
+            const id = versusMatchId;
+            isPaused = false;
+            document.getElementById('pause-menu').style.display = 'none';
+            stopVersusTick();
+            if (sb) sb.rpc('mp_forfeit_match', { p_match_id: id }).catch(function () {});
+            exitVersusMatch();
+            showHome();
+        }
+
+        // Closing the tab mid-match/mid-queue would otherwise leave rows behind
+        // until mp_cleanup_stale sweeps them. sendBeacon-style best-effort
+        // cleanup on the way out keeps things tidier for the opponent.
+        window.addEventListener('pagehide', function () {
+            if (!sb) return;
+            try {
+                if (gameMode === 'versus' && versusMatchId) {
+                    sb.rpc('mp_forfeit_match', { p_match_id: versusMatchId });
+                } else if (versusAssignChannel) {
+                    sb.rpc('mp_leave_queue');
+                }
+            } catch (e) {}
+        });
+
         window.openVersusSetup = openVersusSetup;
         window.startVersusSearch = startVersusSearch;
         window.cancelVersusSearch = cancelVersusSearch;
         window.exitVersusMatch = exitVersusMatch;
+        window.forfeitVersusMatch = forfeitVersusMatch;
 
         // ==========================================
         // UNDO / REDO  — rewind up to 3 moves. Every placement and hold pushes a
@@ -2920,6 +3057,14 @@
             document.getElementById('pause-btn').style.display = 'none';
             showRewindBar(false);
             updatePauseMusicLabel();
+            // Versus: you can't restart a live opponent's match — offer Forfeit
+            // instead. NOTE the match clock keeps running server-side while
+            // this menu is open; pausing is local-only in Versus by design.
+            const inVersus = (gameMode === 'versus');
+            const restartBtn = document.getElementById('pause-restart-btn');
+            const forfeitBtn = document.getElementById('pause-forfeit-btn');
+            if (restartBtn) restartBtn.style.display = inVersus ? 'none' : 'block';
+            if (forfeitBtn) forfeitBtn.style.display = inVersus ? 'block' : 'none';
             document.getElementById('pause-menu').style.display = 'flex';
             haptic(HAPTICS.hold);
         }

@@ -105,8 +105,12 @@ create table if not exists mp_matches (
 -- players[i] shape (kept as plain JSON so the client can read/write it
 -- directly without a separate table):
 --   { "profile_id": "...", "name": "...", "skin": "cyber",
---     "score": 0, "multiplier": 1,
+--     "score": 0, "multiplier": 1, "moves_this_turn": 0,
 --     "queue": [...pieces...], "held": null, "can_hold": true }
+-- moves_this_turn counts placements made during the CURRENT turn. A turn
+-- lasts the full turn_seconds and you may place as many pieces as you can
+-- fit in it; the counter exists so mp_expire_turn can tell "played their
+-- turn" from "sat there and did nothing" (the latter takes the penalty).
 
 alter table mp_matches enable row level security;
 
@@ -134,6 +138,34 @@ exception when duplicate_object then null;
 end $$;
 
 -- ============================================================
+-- mp_cleanup_stale — housekeeping for abandoned state.
+-- Without an always-on server, players who close the tab mid-queue or
+-- mid-match would leave rows behind forever. This runs opportunistically
+-- at the top of mp_try_match (i.e. whenever anyone looks for a game), so
+-- the tables self-clean without a cron job. Safe to call any time.
+--   * queue rows older than 2 minutes  -> the client stopped polling
+--   * matches past their clock + 60s   -> nobody called mp_expire_turn
+--   * assignments older than 10 minutes-> long since consumed
+-- ============================================================
+create or replace function mp_cleanup_stale()
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+    delete from mp_queue where joined_at < now() - interval '2 minutes';
+
+    update mp_matches
+    set status = 'finished', updated_at = now()
+    where status = 'active'
+      and now() > match_started_at + make_interval(secs => match_seconds) + interval '60 seconds';
+
+    delete from mp_assignments where assigned_at < now() - interval '10 minutes';
+$$;
+
+grant execute on function mp_cleanup_stale() to authenticated;
+
+-- ============================================================
 -- RPC: mp_try_match
 -- Called when a player wants to start Versus. Tries to pair with anyone
 -- already waiting; if nobody's waiting, joins the queue instead.
@@ -155,6 +187,10 @@ begin
     if v_self is null then
         raise exception 'not authenticated';
     end if;
+
+    -- Opportunistic housekeeping so abandoned queue rows / dead matches
+    -- never pile up (see mp_cleanup_stale above).
+    perform mp_cleanup_stale();
 
     -- Make sure a profile row exists (idempotent).
     insert into profiles (id, display_name)
@@ -187,14 +223,14 @@ begin
                 'profile_id', v_opponent.profile_id,
                 'name', v_opponent.display_name,
                 'skin', v_opponent.skin_id,
-                'score', 0, 'multiplier', 1,
+                'score', 0, 'multiplier', 1, 'moves_this_turn', 0,
                 'queue', '[]'::jsonb, 'held', null, 'can_hold', true
             ),
             jsonb_build_object(
                 'profile_id', v_self,
                 'name', coalesce(p_display_name, 'PLAYER'),
                 'skin', p_skin_id,
-                'score', 0, 'multiplier', 1,
+                'score', 0, 'multiplier', 1, 'moves_this_turn', 0,
                 'queue', '[]'::jsonb, 'held', null, 'can_hold', true
             )
         );
@@ -280,7 +316,12 @@ grant execute on function mp_join_ready(uuid, jsonb, jsonb) to authenticated;
 -- RPC: mp_place_piece — the authoritative move handler.
 -- Validates it's your turn and the turn hasn't expired, validates the
 -- Morphed color-match placement rule server-side, flips the cells,
--- scores it, checks for a board clear, and advances the turn.
+-- scores it and checks for a board clear.
+--
+-- NOTE: placing does NOT end your turn. You keep placing as many pieces
+-- as you can until turn_seconds runs out; only mp_expire_turn advances
+-- turn_index. Each placement bumps moves_this_turn so the expiry handler
+-- knows whether you actually played.
 -- ============================================================
 create or replace function mp_place_piece(
     p_match_id uuid,
@@ -308,7 +349,6 @@ declare
     v_score       int;
     v_mult        int;
     v_sum         int := 0;
-    v_next_idx    int;
     v_num_players int;
     v_cleared     boolean := false;
     r int; c int; tr int; tc int;
@@ -385,14 +425,14 @@ begin
     v_turn_player := jsonb_set(v_turn_player, '{queue}', coalesce(p_new_queue, '[]'::jsonb));
     v_turn_player := jsonb_set(v_turn_player, '{held}', coalesce(p_new_held, 'null'::jsonb));
     v_turn_player := jsonb_set(v_turn_player, '{can_hold}', to_jsonb(coalesce(p_new_can_hold, true)));
+    v_turn_player := jsonb_set(v_turn_player, '{moves_this_turn}',
+                               to_jsonb(coalesce((v_turn_player->>'moves_this_turn')::int, 0) + 1));
 
-    v_next_idx := (v_match.turn_index + 1) % v_num_players;
-
+    -- turn_index and turn_started_at deliberately untouched: the player
+    -- keeps the floor for the rest of their 30 seconds.
     update mp_matches
     set grid = v_grid,
         players = jsonb_set(v_match.players, array[v_match.turn_index::text], v_turn_player),
-        turn_index = v_next_idx,
-        turn_started_at = now(),
         status = case when now() >= v_match.match_started_at + make_interval(secs => v_match.match_seconds)
                       then 'finished' else 'active' end,
         updated_at = now()
@@ -408,9 +448,13 @@ grant execute on function mp_place_piece(uuid, jsonb, int, int, jsonb, jsonb, bo
 -- ============================================================
 -- RPC: mp_expire_turn — idempotent watchdog. Any connected client can
 -- call this once a second; it only does something if the current
--- turn's (or match's) clock has actually run out. On a turn timeout the
--- active player loses a flat penalty (not eliminated) and play passes
--- to the next player.
+-- turn's (or match's) clock has actually run out.
+--
+-- The clock running out is the NORMAL way a turn ends (you place as many
+-- pieces as you can within it), so it costs nothing by itself. The
+-- penalty applies only when the player let the whole turn pass without
+-- landing a single piece — stuck or idle. Either way they're never
+-- eliminated; play just passes to the next player.
 -- ============================================================
 create or replace function mp_expire_turn(p_match_id uuid)
 returns jsonb
@@ -426,6 +470,8 @@ declare
     v_score       int;
     v_penalty     constant int := 50;
     v_next_idx    int;
+    v_moves       int;
+    v_failed      boolean := false;
     v_finished    boolean := false;
 begin
     select * into v_match from mp_matches where id = p_match_id for update;
@@ -444,11 +490,24 @@ begin
 
     v_num_players := jsonb_array_length(v_match.players);
     v_player := v_match.players -> v_match.turn_index;
-    v_score := greatest(0, coalesce((v_player->>'score')::int, 0) - v_penalty);
-    v_player := jsonb_set(v_player, '{score}', to_jsonb(v_score));
+    v_moves := coalesce((v_player->>'moves_this_turn')::int, 0);
+
+    -- Penalty ONLY for a turn where nothing was placed. Placing even one
+    -- piece means the turn was played and simply ran out of time.
+    if v_moves = 0 then
+        v_score := greatest(0, coalesce((v_player->>'score')::int, 0) - v_penalty);
+        v_player := jsonb_set(v_player, '{score}', to_jsonb(v_score));
+        v_failed := true;
+    end if;
+
+    -- Reset the counter for this player's next turn.
+    v_player := jsonb_set(v_player, '{moves_this_turn}', '0'::jsonb);
     v_players := jsonb_set(v_match.players, array[v_match.turn_index::text], v_player);
 
     v_next_idx := (v_match.turn_index + 1) % v_num_players;
+    -- Incoming player starts their turn with a clean counter too.
+    v_players := jsonb_set(v_players, array[v_next_idx::text, 'moves_this_turn'], '0'::jsonb);
+
     v_finished := now() >= v_match.match_started_at + make_interval(secs => v_match.match_seconds);
 
     update mp_matches
@@ -460,11 +519,67 @@ begin
     where id = p_match_id;
 
     select * into v_match from mp_matches where id = p_match_id;
-    return to_jsonb(v_match) || jsonb_build_object('failed_player', v_player->>'profile_id', 'penalty', v_penalty);
+    return to_jsonb(v_match) || jsonb_build_object(
+        'failed_player', case when v_failed then v_player->>'profile_id' else null end,
+        'penalty', case when v_failed then v_penalty else 0 end);
 end;
 $$;
 
 grant execute on function mp_expire_turn(uuid) to authenticated;
+
+-- ============================================================
+-- RPC: mp_forfeit_match — quit a match early.
+-- Ends the match immediately and hands the win to the opponent
+-- regardless of score. The forfeiting player is flagged in the players
+-- JSON so the results screen can label it. Idempotent: forfeiting an
+-- already-finished match just returns the current row.
+-- ============================================================
+create or replace function mp_forfeit_match(p_match_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+    v_self     uuid := auth.uid();
+    v_match    mp_matches%rowtype;
+    v_idx      int;
+    v_players  jsonb;
+    v_opponent uuid;
+begin
+    select * into v_match from mp_matches where id = p_match_id for update;
+    if not found then raise exception 'match not found'; end if;
+    if v_match.status <> 'active' then return to_jsonb(v_match); end if;
+
+    select ord - 1 into v_idx
+        from jsonb_array_elements(v_match.players) with ordinality as t(p, ord)
+        where (t.p->>'profile_id')::uuid = v_self;
+    if v_idx is null then raise exception 'not a participant'; end if;
+
+    -- Winner = the first participant who isn't the forfeiter.
+    select (p->>'profile_id')::uuid into v_opponent
+        from jsonb_array_elements(v_match.players) p
+        where (p->>'profile_id')::uuid <> v_self
+        limit 1;
+
+    v_players := jsonb_set(v_match.players, array[v_idx::text, 'forfeited'], 'true'::jsonb);
+
+    update mp_matches
+    set status = 'finished',
+        players = v_players,
+        winner_profile_id = v_opponent,
+        updated_at = now()
+    where id = p_match_id;
+
+    -- Also make sure this player isn't left sitting in the queue.
+    delete from mp_queue where profile_id = v_self;
+
+    select * into v_match from mp_matches where id = p_match_id;
+    return to_jsonb(v_match);
+end;
+$$;
+
+grant execute on function mp_forfeit_match(uuid) to authenticated;
 
 -- ============================================================
 -- RPC: mp_add_lifetime_sparks — call whenever addSparks() runs, so
