@@ -298,7 +298,7 @@
         .menu-link-btn:hover { color: #fff; border-color: #62cdff; }
 
         /* ===== HOME SCREEN ===== */
-        #home-screen, #skins-panel, #settings-panel, #multi-setup, #controls-panel,
+        #home-screen, #skins-panel, #settings-panel, #controls-panel,
         #achievements-panel, #versus-setup {
             position: absolute;
             inset: 0;
@@ -522,38 +522,56 @@
             text-shadow: 0 0 8px rgba(255, 213, 74, 0.45);
         }
 
-        /* ===== MULTIPLAYER ===== */
+        /* ===== VERSUS HUD =====
+           One slim bar across the top: both players' chips with the turn timer
+           between them. Deliberately compact — on a phone every pixel it costs
+           comes straight off the board. */
         #multi-hud {
             position: absolute;
-            top: 10px;
+            top: 8px;
             left: 50%;
             transform: translateX(-50%);
             display: none;
-            flex-direction: column;
+            flex-direction: row;
             align-items: center;
-            gap: 6px;
+            justify-content: center;
+            gap: 10px;
+            width: max-content;
+            max-width: 96vw;
+            padding: 5px 12px;
+            border-radius: 10px;
+            background: rgba(12, 8, 26, 0.72);
+            border: 1px solid rgba(98, 205, 255, 0.22);
+            -webkit-backdrop-filter: blur(3px);
+            backdrop-filter: blur(3px);
             z-index: 6;
             pointer-events: none;
         }
         #mp-timer {
-            font-size: 1.35rem;
+            font-size: 1.05rem;
             font-weight: 800;
             color: #62cdff;
-            letter-spacing: 1px;
-            text-shadow: 0 0 10px #62cdff;
+            letter-spacing: 0.5px;
+            text-shadow: 0 0 8px #62cdff;
+            white-space: nowrap;
+            order: 2;
         }
-        #mp-scoreboard { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+        #mp-scoreboard {
+            display: contents;   /* chips sit directly in the bar, timer between them */
+        }
         .mp-chip {
             display: flex;
             flex-direction: column;
             align-items: center;
-            min-width: 58px;
-            padding: 4px 9px;
-            border-radius: 8px;
+            min-width: 52px;
+            padding: 2px 8px;
+            border-radius: 7px;
             background: rgba(20, 15, 40, 0.82);
             border: 1px solid #2e2a4a;
             transition: all 0.15s;
         }
+        .mp-chip:first-child { order: 1; }
+        .mp-chip:last-child  { order: 3; }
         .mp-chip.active { border-color: #00ffcc; box-shadow: 0 0 12px rgba(0, 255, 204, 0.45); }
         .mp-chip.dead { opacity: 0.4; }
         .mp-chip .mp-name { font-size: 0.6rem; letter-spacing: 1px; color: #88ddff; }
@@ -565,13 +583,6 @@
             max-width: 340px;
             margin: 0 auto 18px;
             line-height: 1.4;
-        }
-        .mp-count { display: flex; flex-direction: column; gap: 12px; margin-bottom: 18px; }
-        .mp-online-soon {
-            color: #6a6a8a;
-            font-size: 0.75rem;
-            letter-spacing: 1px;
-            margin-bottom: 18px;
         }
         #mp-results {
             position: absolute;
@@ -905,7 +916,7 @@
     <div id="mp-results">
         <h2 id="mp-results-title">P1 WINS!</h2>
         <div id="mp-results-list" class="mp-results-list"></div>
-        <button class="play-again-btn" onclick="openMultiSetup()">PLAY AGAIN</button>
+        <button class="play-again-btn" onclick="openVersusSetup()">PLAY AGAIN</button>
         <button class="menu-link-btn" onclick="showHome()">MAIN MENU</button>
     </div>
 
@@ -921,7 +932,6 @@
             <button class="home-btn" onclick="openSettings()">⚙ SETTINGS</button>
             <button class="home-btn" onclick="openLeaderboard()">🏆 LEADERBOARD</button>
             <button class="home-btn" onclick="openAchievements()">⚑ ACHIEVEMENTS</button>
-            <button class="home-btn" onclick="openMultiSetup()">⚇ MULTIPLAYER</button>
             <button class="home-btn" onclick="openVersusSetup()">⚔ VERSUS (ONLINE)</button>
         </div>
         <div class="home-footer">
@@ -958,21 +968,6 @@
             <div id="versus-status" class="mp-sub"></div>
             <button class="home-btn primary" id="versus-find-btn" onclick="startVersusSearch()">▶ FIND MATCH</button>
             <button class="home-btn" id="versus-cancel-btn" style="display:none" onclick="cancelVersusSearch()">CANCEL</button>
-            <button class="home-btn back-btn" onclick="showHome()">← BACK</button>
-        </div>
-    </div>
-
-    <!-- MULTIPLAYER SETUP -->
-    <div id="multi-setup">
-        <div class="panel-inner">
-            <h2 class="panel-title">MULTIPLAYER</h2>
-            <p class="mp-sub">Pass &amp; play on one device. Everyone shares the board but keeps their own score. Each turn you get 30 seconds to place as many pieces as you can, then it passes. When everyone's out, the highest score wins.</p>
-            <div class="mp-count">
-                <button class="home-btn primary" onclick="startMultiplayer(2)">▶ 2 PLAYERS</button>
-                <button class="home-btn" onclick="startMultiplayer(3)">▶ 3 PLAYERS</button>
-                <button class="home-btn" onclick="startMultiplayer(4)">▶ 4 PLAYERS</button>
-            </div>
-            <div class="mp-online-soon">⚇ ONLINE — COMING SOON</div>
             <button class="home-btn back-btn" onclick="showHome()">← BACK</button>
         </div>
     </div>
@@ -1345,7 +1340,7 @@
 
         // Screen state: 'home' | 'playing'  (game only runs input when playing)
         let appScreen = 'home';
-        // Game mode: 'solo' | 'multi' | 'multi-over' (drives turn/game-over logic)
+        // Game mode: 'solo' | 'versus' | 'versus-over' (drives turn/game-over logic)
         let gameMode = 'solo';
 
         function applyThemeBackground() {
@@ -2207,8 +2202,7 @@
         function performPlacement(startRow, startCol, piece) {
             if (!piece) return;
             if (gameMode === 'versus') { performVersusPlacement(startRow, startCol, piece); return; }
-            // In multiplayer, only accept a placement during an active, unlocked turn.
-            if (gameMode !== 'solo' && (gameMode !== 'multi' || turnLocked)) return;
+            if (gameMode !== 'solo') return;
             initAudio();
             pushUndo();                    // snapshot pre-placement for rewind
             let blocksPlaced = 0;
@@ -2226,10 +2220,8 @@
             }
             playPlacementEffects(startRow, startCol, piece);
             score += (blocksPlaced * 10) * multiplier;
-            if (gameMode === 'solo') {
-                checkAchievements('score', { score: score });
-                checkAchievements('multiplier', { multiplier: multiplier });
-            }
+            checkAchievements('score', { score: score });
+            checkAchievements('multiplier', { multiplier: multiplier });
             queue.splice(0, 1);
             fillQueue();
             canHold = true;
@@ -2243,14 +2235,7 @@
             }
             checkWinCondition();
             updateBoardTension();          // adaptive-trigger stiffness from board state
-            if (gameMode === 'multi') {
-                // Turn does NOT end on placement — you keep playing until your 30s
-                // runs out. Only end early if this placement left you with no move.
-                updateMultiHUD();
-                if (activePlayerStuck()) failActivePlayer();
-            } else {
-                setTimeout(checkGameOver, 50);
-            }
+            setTimeout(checkGameOver, 50);
         }
 
         function placePiece(startRow, startCol, piece) {
@@ -2335,196 +2320,6 @@
             startPlay();
         }
 
-        // ==========================================
-        // LOCAL MULTIPLAYER (pass-and-play, 2–4 players)
-        // One SHARED board; each player keeps their own score, multiplier, queue
-        // and hold. On a player's turn their state is swapped into the game
-        // globals, so all the normal placement/scoring/clear logic applies to
-        // them and their piece difficulty ramps off their OWN score (same curve
-        // as solo). Turns last 30s; timing out skips (you keep your piece). A
-        // player is out when stuck (same rule as solo game-over); when everyone's
-        // out, highest score wins. endTurn()/loadPlayerState() are the seams an
-        // online layer would later drive from network events.
-        // ==========================================
-        const TURN_SECONDS = 30;
-        let players = [];               // {name,score,multiplier,queue,held,canHold,alive}
-        let activePlayer = 0;
-        let turnTimeLeft = TURN_SECONDS;
-        let turnTimerId = null;
-        let turnLocked = false;         // input lock during turn hand-off
-
-        function saveActivePlayerState() {
-            const p = players[activePlayer];
-            if (!p) return;
-            p.score = score; p.multiplier = multiplier;
-            p.queue = queue; p.held = heldPiece; p.canHold = canHold;
-        }
-        function loadPlayerState(i) {
-            activePlayer = i;
-            const p = players[i];
-            score = p.score; multiplier = p.multiplier;
-            queue = p.queue; heldPiece = p.held; canHold = p.canHold;
-            preview = null;
-        }
-        // Same rule as solo checkGameOver, evaluated on the current (active) globals.
-        function activePlayerStuck() {
-            const cur = queue[0];
-            if (cur && canFitAnywhere(cur)) return false;
-            if (heldPiece && canFitAnywhere(heldPiece)) return false;
-            if (!heldPiece) return false;   // can stash -> not out yet
-            return true;
-        }
-
-        function startMultiplayer(numPlayers) {
-            gameMode = 'multi';
-            appScreen = 'playing';
-            isGameOver = false;
-            isPaused = false;
-            playTransitionSound();
-            if (!hasStartedMusic) startMusic();
-
-            // Fresh shared board (same build as initGame).
-            grid = [];
-            for (let r = 0; r < BOARD_SIZE; r++) {
-                grid[r] = [];
-                for (let c = 0; c < BOARD_SIZE; c++) grid[r][c] = Math.random() > 0.5 ? 1 : 0;
-            }
-            flameParticles = []; flood = null; crystals = null; fireworks = []; rockets = [];
-            cyberBits = []; cyberRings = []; cyberSurge = null;
-
-            // Build each player; fill their queue at their own (zero) score.
-            players = [];
-            for (let i = 0; i < numPlayers; i++) {
-                score = 0; multiplier = 1; queue = []; heldPiece = null; canHold = true;
-                fillQueue();                       // score 0 -> easy tier, like solo start
-                players.push({ name: 'P' + (i + 1), score: 0, multiplier: 1,
-                               queue: queue, held: null, canHold: true, alive: true });
-                queue = [];                         // detach reference for next player
-            }
-            activePlayer = 0;
-            loadPlayerState(0);
-
-            document.getElementById('home-screen').style.display = 'none';
-            document.getElementById('multi-setup').style.display = 'none';
-            document.getElementById('mp-results').style.display = 'none';
-            document.getElementById('ui-layer').style.display = 'flex';
-            document.getElementById('message').style.display = 'block';
-            document.getElementById('pause-menu').style.display = 'none';
-            document.getElementById('pause-btn').style.display = 'flex';
-            showRewindBar(false);                   // no undo in multiplayer
-            document.getElementById('multi-hud').style.display = 'flex';
-            startTurnTimer();
-            updateMultiHUD();
-        }
-
-        function startTurnTimer() {
-            turnLocked = false;
-            turnTimeLeft = TURN_SECONDS;
-            updateTurnTimerUI();
-            clearInterval(turnTimerId);
-            turnTimerId = setInterval(function () {
-                if (isPaused || gameMode !== 'multi') return;
-                turnTimeLeft--;
-                updateTurnTimerUI();
-                if (turnTimeLeft <= 0) onTurnTimeout();
-            }, 1000);
-        }
-        function stopTurnTimer() { clearInterval(turnTimerId); turnTimerId = null; }
-
-        // 30s elapsed: the turn is over — pass to the next player. Any piece the
-        // player hadn't placed yet stays with them for their next turn.
-        function onTurnTimeout() { endTurn(); }
-
-        // A player who runs out of legal moves during their turn is eliminated.
-        function failActivePlayer() {
-            if (gameMode !== 'multi') return;
-            players[activePlayer].alive = false;
-            saveActivePlayerState();
-            updateMultiHUD();
-            endTurn();                       // pass to the next alive player
-        }
-
-        function endTurn() {
-            if (gameMode !== 'multi') return;
-            stopTurnTimer();
-            saveActivePlayerState();
-            advanceToNextPlayer();
-        }
-
-        function advanceToNextPlayer() {
-            const n = players.length;
-            for (let step = 1; step <= n; step++) {
-                const idx = (activePlayer + step) % n;
-                if (!players[idx].alive) continue;
-                loadPlayerState(idx);
-                if (activePlayerStuck()) {           // eliminated on their turn
-                    players[idx].alive = false;
-                    saveActivePlayerState();
-                    updateMultiHUD();
-                    continue;
-                }
-                showMessage(players[idx].name + ' — your turn');
-                startTurnTimer();
-                updateMultiHUD();
-                return;
-            }
-            endMatch();                              // nobody left who can move
-        }
-
-        function endMatch() {
-            stopTurnTimer();
-            gameMode = 'multi-over';
-            saveActivePlayerState();
-            const ranked = players.map((p, i) => ({ i: i, name: p.name, score: p.score }))
-                                  .sort((a, b) => b.score - a.score);
-            const top = ranked.length ? ranked[0].score : 0;
-            const winners = ranked.filter(r => r.score === top);
-            const title = winners.length > 1 ? 'TIE!' : (winners[0].name + ' WINS!');
-            document.getElementById('mp-results-title').textContent = title;
-            document.getElementById('mp-results-list').innerHTML = ranked.map((r, k) =>
-                `<div class="mp-result-row${winners.some(w => w.i === r.i) ? ' win' : ''}">` +
-                `<span>${k + 1}. ${r.name}</span><span>${r.score.toLocaleString()}</span></div>`).join('');
-            document.getElementById('pause-btn').style.display = 'none';
-            document.getElementById('multi-hud').style.display = 'none';
-            document.getElementById('mp-results').style.display = 'flex';
-        }
-
-        function exitMultiplayer() {
-            stopTurnTimer();
-            gameMode = 'solo';
-            players = [];
-            const h = document.getElementById('multi-hud'); if (h) h.style.display = 'none';
-            const r = document.getElementById('mp-results'); if (r) r.style.display = 'none';
-        }
-
-        function updateTurnTimerUI() {
-            const el = document.getElementById('mp-timer');
-            if (el) el.textContent = Math.max(0, turnTimeLeft) + 's';
-        }
-        function updateMultiHUD() {
-            const board = document.getElementById('mp-scoreboard');
-            if (!board) return;
-            board.innerHTML = players.map((p, i) =>
-                `<div class="mp-chip${i === activePlayer && p.alive ? ' active' : ''}${p.alive ? '' : ' dead'}">` +
-                `<span class="mp-name">${p.name}${p.alive ? '' : ' ✗'}</span>` +
-                `<span class="mp-score">${p.score.toLocaleString()}</span></div>`).join('');
-            updateTurnTimerUI();
-        }
-
-        function openMultiSetup() {
-            exitMultiplayer();
-            appScreen = 'home';
-            isGameOver = false;
-            document.getElementById('home-screen').style.display = 'none';
-            document.getElementById('ui-layer').style.display = 'none';
-            document.getElementById('message').style.display = 'none';
-            document.getElementById('pause-btn').style.display = 'none';
-            document.getElementById('multi-setup').style.display = 'flex';
-        }
-
-        window.openMultiSetup = openMultiSetup;
-        window.startMultiplayer = startMultiplayer;
-        window.exitMultiplayer = exitMultiplayer;
 
         // ==========================================
         // VERSUS MODE — live online 1v1
@@ -2746,7 +2541,10 @@
                     }
                     applyVersusMatchState(r.data);
                     const now2 = versusMatch && versusMatch.players[versusMatch.turn_index];
-                    if (now2 && now2.profile_id === versusMyProfileId) showMessage('Your turn');
+                    if (now2 && now2.profile_id === versusMyProfileId) {
+                        showMessage('Your turn');
+                        checkVersusStuck();   // handed a dead hand? scramble it now
+                    }
                 }).catch(function () { versusExpiryInFlight = false; });
             }
         }
@@ -2806,6 +2604,8 @@
             document.getElementById('pause-btn').style.display = 'flex';
             showRewindBar(false);   // no undo/redo in Versus
             document.getElementById('multi-hud').style.display = 'flex';
+            resizeGame();             // re-layout to make room for the opponent strip
+            updateChromeVisibility();
         }
 
         function performVersusPlacement(startRow, startCol, piece) {
@@ -2861,6 +2661,7 @@
                         checkAchievements('clear');
                     }
                     applyVersusMatchState(r.data, true);
+                    checkVersusStuck();   // did that placement strand you?
                 }
             }).catch(function (e) { showMessage(e.message || 'Placement failed'); });
         }
@@ -2926,7 +2727,7 @@
             const h = document.getElementById('multi-hud'); if (h) h.style.display = 'none';
             const r = document.getElementById('mp-results'); if (r) r.style.display = 'none';
             const playAgainBtn = document.querySelector('#mp-results .play-again-btn');
-            if (playAgainBtn) playAgainBtn.onclick = function () { openMultiSetup(); };  // restore local-MP default
+            if (playAgainBtn) playAgainBtn.onclick = function () { openVersusSetup(); };
         }
 
         // Quit a live match. Hands the win to the opponent server-side (so
@@ -2958,6 +2759,57 @@
                 }
             } catch (e) {}
         });
+
+        // ===== STUCK = FAIL = SCRAMBLE =====
+        // Same test solo uses for game over: you're stuck when neither your
+        // current piece nor your held piece fits and your hold slot is full
+        // (an empty hold is always an escape hatch). In Versus that isn't the
+        // end of anything — it's a FAIL worth −1000, after which your hand is
+        // replaced so the match keeps moving. This is what makes boxing your
+        // opponent in worth doing.
+        function versusStuck() {
+            if (gameMode !== 'versus' || !versusMatch || versusMatch.status !== 'active') return false;
+            const cur = queue[0];
+            if (cur && canFitAnywhere(cur)) return false;
+            if (heldPiece && canFitAnywhere(heldPiece)) return false;
+            if (!heldPiece) return false;
+            return true;
+        }
+
+        let versusScrambleInFlight = false;
+        function checkVersusStuck() {
+            if (versusScrambleInFlight || !versusStuck()) return;
+            const turnPlayer = versusMatch.players[versusMatch.turn_index];
+            if (!turnPlayer || turnPlayer.profile_id !== versusMyProfileId) return;  // only your own hand
+
+            versusScrambleInFlight = true;
+            // Build a replacement hand whose first piece definitely fits, so a
+            // scramble can't immediately re-trigger and drain 1000 a second.
+            const fresh = [];
+            for (let i = 0; i < QUEUE_SIZE; i++) {
+                let p = null;
+                for (let tries = 0; tries < 60; tries++) {
+                    p = pickNextPiece();
+                    if (i > 0 || canFitAnywhere(p)) break;
+                }
+                fresh.push(p);
+            }
+
+            showPopup('FAIL — STUCK  −1000', theme().invalid);
+            haptic(HAPTICS.invalid);
+            showMessage('No moves left — pieces scrambled');
+
+            sb.rpc('mp_fail_scramble', { p_match_id: versusMatchId, p_new_queue: fresh })
+              .then(function (r) {
+                  versusScrambleInFlight = false;
+                  if (r.error) { console.warn('scramble rejected:', r.error.message); return; }
+                  if (r.data) {
+                      versusLocalDirty = false;   // take the server's fresh hand
+                      applyVersusMatchState(r.data, true);
+                  }
+              })
+              .catch(function () { versusScrambleInFlight = false; });
+        }
 
         window.openVersusSetup = openVersusSetup;
         window.startVersusSearch = startVersusSearch;
@@ -3091,7 +2943,7 @@
         // Hold logic (matches Morphed)
         function holdCurrentPiece() {
             if (queue.length === 0) return;
-            if (gameMode !== 'solo' && (gameMode !== 'multi' || turnLocked) && gameMode !== 'versus') return;
+            if (gameMode !== 'solo' && gameMode !== 'versus') return;
             if (gameMode === 'versus') {
                 if (!versusMatch || versusMatch.status !== 'active') return;
                 if (versusMatch.players[versusMatch.turn_index].profile_id !== versusMyProfileId) {
@@ -3118,12 +2970,10 @@
             preview = null;
             playHoldSound();
             haptic(HAPTICS.hold);
-            if (gameMode === 'multi') {
-                updateMultiHUD();
-                if (activePlayerStuck()) failActivePlayer();
-            } else if (gameMode === 'versus') {
+            if (gameMode === 'versus') {
                 versusLocalDirty = true;   // don't let the next realtime sync clobber this
                 updateVersusHUD();
+                checkVersusStuck();        // holding can strand you — scramble if so
             } else {
                 checkGameOver();
             }
@@ -3272,6 +3122,10 @@
         // ==========================================
         let isPortrait = false;
 
+        // Opponent's queue strip (Versus only) — sits above the board so the
+        // screen reads "their side up top, your side down below".
+        let oppItemSize = 0, oppStartX = 0, oppItemY = 0;
+
         function resizeGame() {
             cw = window.innerWidth;
             ch = window.innerHeight;
@@ -3284,43 +3138,96 @@
             // Portrait / narrow screens: stack the UI instead of side-by-side.
             isPortrait = cw < 720 || cw < ch;
 
+            // Reserve room for the opponent strip only while a Versus match is
+            // actually on screen — solo keeps every pixel for the board.
+            const showOpp = (gameMode === 'versus' || gameMode === 'versus-over');
+
             if (isPortrait) {
-                // Board is the star — make it as large as width comfortably allows.
-                boardPixelSize = Math.min(cw * 0.92, ch * 0.6, 560);
+                // ---- MOBILE ----
+                // Vertical budget, top to bottom:
+                //   slim HUD bar | opponent strip | BOARD | hold + queue strip
+                // The hold box now lives in the bottom strip beside the queue
+                // instead of floating above the board, which buys the board a
+                // whole row of height back.
+                const topBarH = showOpp ? 46 : 12;
+                oppItemSize = showOpp ? Math.max(24, Math.min(42, Math.floor(cw * 0.085))) : 0;
+                const oppBlockH = showOpp ? oppItemSize + 24 : 0;
+
+                // Bottom strip height scales with the board (hold is 1.25 units
+                // tall), so solve for the board size that makes it all fit:
+                //   topBarH + oppBlockH + 10 + B + 26 + (0.2B + 22) <= ch
+                const vertBudget = (ch - topBarH - oppBlockH - 58) / 1.2;
+                boardPixelSize = Math.min(cw * 0.94, vertBudget, 560);
                 cellSize = boardPixelSize / BOARD_SIZE;
                 boardX = cw / 2 - boardPixelSize / 2;
-                boardY = ch * 0.30;
 
-                // Hold box: top-left above the board.
-                holdBoxSize = Math.max(64, cellSize * 2.1);
+                oppItemY = topBarH + 14;
+                boardY = topBarH + oppBlockH + 10;
+
+                // Bottom strip: [HOLD][q1..q5] across the board's width.
+                // 1.25u + gap + 5u + 4 gaps = boardPixelSize  ->  u = (B-46)/6.25
+                const u = Math.max(34, Math.floor((boardPixelSize - 46) / 6.25));
+                queueItemSize = u;
+                holdBoxSize = Math.floor(u * 1.25);
                 holdBoxX = boardX;
-                holdBoxY = boardY - holdBoxSize - 36;
+                holdBoxY = boardY + boardPixelSize + 26;
+                queueStartX = boardX + holdBoxSize + 14;
+                queueItemY = holdBoxY + Math.floor((holdBoxSize - u) / 2);
 
-                // Queue: horizontal strip below the board.
-                const stripW = boardPixelSize;
-                queueItemSize = Math.max(40, Math.min(64, Math.floor((stripW - (QUEUE_SIZE - 1) * 10) / QUEUE_SIZE)));
-                queueStartX = boardX;
-                queueItemY = boardY + boardPixelSize + 46;
+                // Centre the whole stack vertically rather than letting it ride
+                // high with dead space under the queue strip.
+                const contentTop = showOpp ? oppItemY - 14 : boardY;
+                const contentBot = holdBoxY + holdBoxSize;
+                let shift = Math.floor((ch - (contentBot - contentTop)) / 2 - contentTop);
+                shift = Math.max(0, Math.min(shift, ch - contentBot));
+                if (shift > 0) {
+                    oppItemY += shift; boardY += shift;
+                    holdBoxY += shift; queueItemY += shift;
+                }
             } else {
-                // Desktop: Hold left | Board center | Queue right
-                boardPixelSize = Math.min(cw * 0.52, ch * 0.72, 480);
+                // ---- DESKTOP ----  Hold left | Board center | Queue right
+                oppItemSize = showOpp ? 44 : 0;
+                const oppBlockH = showOpp ? oppItemSize + 30 : 0;
+
+                boardPixelSize = Math.min(cw * 0.52, ch * 0.72 - oppBlockH, 480);
                 cellSize = boardPixelSize / BOARD_SIZE;
                 boardX = cw / 2 - boardPixelSize / 2;
-                boardY = ch / 2 - boardPixelSize / 2 + 28;
+                boardY = ch / 2 - boardPixelSize / 2 + 28 + oppBlockH * 0.5;
+
+                oppItemY = boardY - oppBlockH + 4;
 
                 holdBoxSize = Math.max(78, cellSize * 2.6);
                 holdBoxX = boardX - holdBoxSize - 42;
                 holdBoxY = boardY + (boardPixelSize - holdBoxSize) / 2;
 
-                const availableHeight = boardPixelSize * 0.92;
-                queueItemSize = Math.max(42, Math.floor(availableHeight / (QUEUE_SIZE + 0.3)));
+                // Queue column: sized off the board, but never taller than the
+                // space actually left below it — otherwise a phone held
+                // sideways runs the column off the bottom of the screen.
+                const availForQueue = Math.max(120, ch - boardY - 16);
+                queueItemSize = Math.max(24, Math.min(
+                    Math.floor(boardPixelSize * 0.92 / (QUEUE_SIZE + 0.3)),
+                    Math.floor(availForQueue / QUEUE_SIZE) - 14));
                 queueStartX = boardX + boardPixelSize + 36;
                 queueItemY = boardY + 8;
             }
+
+            // Opponent strip is centred on the board either way.
+            const oppW = QUEUE_SIZE * oppItemSize + (QUEUE_SIZE - 1) * 8;
+            oppStartX = boardX + (boardPixelSize - oppW) / 2;
+
             if (typeof positionRewindBar === 'function') positionRewindBar();
         }
-        window.addEventListener('resize', resizeGame);
-        window.addEventListener('orientationchange', () => setTimeout(resizeGame, 100));
+
+        // The MORPHED wordmark is pure decoration — on a phone it costs a row
+        // of board height, so it's hidden while playing there.
+        function updateChromeVisibility() {
+            const ui = document.getElementById('ui-layer');
+            if (!ui) return;
+            if (appScreen !== 'playing') { ui.style.display = 'none'; return; }
+            ui.style.display = isPortrait ? 'none' : 'flex';
+        }
+        window.addEventListener('resize', function () { resizeGame(); updateChromeVisibility(); });
+        window.addEventListener('orientationchange', () => setTimeout(function () { resizeGame(); updateChromeVisibility(); }, 100));
         resizeGame();
 
         function drawNeonBlock(x, y, size, color, alpha = 1) {
@@ -3457,8 +3364,67 @@
             ctx.strokeRect(x + pad, y + pad, sz - pad * 2, sz - pad * 2);
         }
 
+        // ===== OPPONENT'S HAND (Versus) =====
+        // Their full upcoming queue, drawn small and dimmed above the board in
+        // THEIR skin colour. This is the sabotage information: knowing what
+        // they have to place lets you leave the board in a state nothing of
+        // theirs fits, which costs them 1000 points.
+        function versusOpponent() {
+            if ((gameMode !== 'versus' && gameMode !== 'versus-over') || !versusMatch) return null;
+            return versusMatch.players.find(function (p) { return p.profile_id !== versusMyProfileId; }) || null;
+        }
+
+        function drawOpponentStrip() {
+            const opp = versusOpponent();
+            if (!opp || !oppItemSize) return;
+            const oppTheme = THEMES.find(function (t) { return t.id === opp.skin; }) || THEMES[0];
+            const oppQueue = opp.queue || [];
+            const theirTurn = versusMatch.players[versusMatch.turn_index] &&
+                              versusMatch.players[versusMatch.turn_index].profile_id === opp.profile_id;
+
+            ctx.save();
+            ctx.globalAlpha = theirTurn ? 1 : 0.66;   // brighten on their turn
+
+            ctx.fillStyle = oppTheme.accent;
+            ctx.font = '9px Courier New';
+            ctx.textAlign = 'left';
+            ctx.fillText(opp.name.toUpperCase() + "'S QUEUE", oppStartX, oppItemY - 5);
+
+            // Held piece marker, tucked to the right of the label.
+            if (opp.held) {
+                ctx.textAlign = 'right';
+                ctx.fillStyle = oppTheme.hold;
+                ctx.fillText('HOLDING', oppStartX + QUEUE_SIZE * oppItemSize + (QUEUE_SIZE - 1) * 8, oppItemY - 5);
+            }
+
+            for (let i = 0; i < QUEUE_SIZE; i++) {
+                const x = oppStartX + i * (oppItemSize + 8);
+                const piece = oppQueue[i];
+                ctx.fillStyle = 'rgba(15, 10, 30, 0.75)';
+                ctx.strokeStyle = (i === 0 && theirTurn) ? oppTheme.valid : '#3a3558';
+                ctx.lineWidth = (i === 0 && theirTurn) ? 2 : 1;
+                ctx.fillRect(x, oppItemY, oppItemSize, oppItemSize);
+                ctx.strokeRect(x, oppItemY, oppItemSize, oppItemSize);
+                if (!piece) continue;
+
+                drawPiecePreview(x, oppItemY, piece, oppItemSize / 4.5, oppTheme.queue, 1);
+
+                // Green tick when the CURRENT board leaves them no legal spot —
+                // that's the sabotage landing.
+                if (!canFitAnywhere(piece)) {
+                    ctx.fillStyle = 'rgba(0, 255, 140, 0.22)';
+                    ctx.fillRect(x + 1, oppItemY + 1, oppItemSize - 2, oppItemSize - 2);
+                    ctx.strokeStyle = '#00ff8c';
+                    ctx.lineWidth = 1.5;
+                    ctx.strokeRect(x + 2, oppItemY + 2, oppItemSize - 4, oppItemSize - 4);
+                }
+            }
+            ctx.restore();
+        }
+
         // Draw score / multiplier in top-left (score-based, no levels)
         function drawHUD() {
+            if (gameMode === 'versus' || gameMode === 'versus-over') return;  // scores live in the HUD bar instead
             const x = 28;
             let y = 68;
             const t = theme();
@@ -3615,11 +3581,13 @@
 
         function drawSideUI() {
             const t = theme();
-            // === HOLD (left) ===
+            // === HOLD === (left of the board on desktop, left of the queue
+            // strip on mobile). Label sits above the box on desktop; on mobile
+            // it goes inside-adjacent to save a line of vertical space.
             ctx.fillStyle = t.hold;
-            ctx.font = '12px Courier New';
+            ctx.font = (isPortrait ? '9px' : '12px') + ' Courier New';
             ctx.textAlign = 'center';
-            ctx.fillText('HOLD', holdBoxX + holdBoxSize / 2, holdBoxY - 10);
+            ctx.fillText('HOLD', holdBoxX + holdBoxSize / 2, holdBoxY - (isPortrait ? 5 : 10));
 
             // Box background
             ctx.strokeStyle = canHold ? t.hold : '#555';
@@ -3671,7 +3639,8 @@
             // === QUEUE === (vertical on desktop, horizontal strip on mobile)
             ctx.fillStyle = t.accent;
             ctx.textAlign = 'left';
-            ctx.fillText('NEXT', queueStartX, queueItemY - 10);
+            ctx.font = (isPortrait ? '9px' : '12px') + ' Courier New';
+            ctx.fillText('NEXT', queueStartX, queueItemY - (isPortrait ? 5 : 10));
 
             for (let i = 0; i < QUEUE_SIZE; i++) {
                 const qp = queueItemPos(i);
@@ -3703,12 +3672,11 @@
                 }
             }
 
-            // Label under queue
-            ctx.fillStyle = '#8b9bb4';
-            ctx.font = '10px Courier New';
-            if (isPortrait) {
-                ctx.fillText('UPCOMING (in order)', queueStartX, queueItemY + queueItemSize + 14);
-            } else {
+            // Label under queue — skipped in portrait, where the strip sits at
+            // the bottom of the screen and the extra line just adds noise.
+            if (!isPortrait) {
+                ctx.fillStyle = '#8b9bb4';
+                ctx.font = '10px Courier New';
                 ctx.fillText('UPCOMING (in order)', queueStartX, queueItemY + QUEUE_SIZE * (queueItemSize + 14) + 12);
             }
         }
@@ -4264,6 +4232,7 @@
 
             // Draw main game elements
             drawBoard();
+            drawOpponentStrip();
             drawSideUI();
             drawLabels();
             updateFlames();
@@ -4466,8 +4435,6 @@
             appScreen = 'home';
             isGameOver = false;
             if (typeof ControllerFX !== 'undefined') ControllerFX.reset();  // release triggers
-            exitMultiplayer();
-            document.getElementById('multi-setup').style.display = 'none';
             var cpEl = document.getElementById('controls-panel'); if (cpEl) cpEl.style.display = 'none';
             document.getElementById('game-over').style.display = 'none';
             document.getElementById('skins-panel').style.display = 'none';
@@ -4482,8 +4449,9 @@
             showRewindBar(false);
             isPaused = false;
             document.getElementById('home-screen').style.display = 'flex';
-            document.getElementById('ui-layer').style.display = 'none';
             document.getElementById('message').style.display = 'none';
+            resizeGame();
+            updateChromeVisibility();
         }
 
         function startPlay() {
@@ -4492,8 +4460,7 @@
             playTransitionSound();
             if (!hasStartedMusic) startMusic();
 
-            exitMultiplayer();                          // ensure solo mode
-            document.getElementById('multi-setup').style.display = 'none';
+            exitVersusMatch();                          // ensure solo mode
             document.getElementById('home-screen').style.display = 'none';
             document.getElementById('skins-panel').style.display = 'none';
             document.getElementById('settings-panel').style.display = 'none';
@@ -4506,6 +4473,8 @@
             showRewindBar(true);
             isPaused = false;
             appScreen = 'playing';
+            resizeGame();             // solo reclaims the opponent-strip space
+            updateChromeVisibility();
             initGame();
         }
 
@@ -4806,7 +4775,7 @@
         }
         function visibleMenuButtons() {
             const ids = ['pause-menu', 'game-over', 'mp-results', 'home-screen',
-                         'multi-setup', 'versus-setup', 'skins-panel', 'settings-panel',
+                         'versus-setup', 'skins-panel', 'settings-panel',
                          'leaderboard-panel', 'credits-panel', 'achievements-panel'];
             for (let k = 0; k < ids.length; k++) {
                 const el = document.getElementById(ids[k]);
@@ -4875,7 +4844,7 @@
             padPrevDir = dirHeld;
 
             const inGame = appScreen === 'playing' && !isPaused && !isGameOver &&
-                           (gameMode === 'solo' || gameMode === 'multi' || gameMode === 'versus');
+                           (gameMode === 'solo' || gameMode === 'versus');
 
             if (inGame) {
                 if (padActive) {

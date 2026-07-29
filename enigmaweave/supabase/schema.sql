@@ -34,12 +34,17 @@ create table if not exists profiles (
 
 alter table profiles enable row level security;
 
+-- NOTE: Postgres has no "create policy if not exists", so every policy is
+-- dropped first. That's what makes this whole file safe to re-run.
+drop policy if exists "profiles: read own" on profiles;
 create policy "profiles: read own" on profiles
     for select using (id = auth.uid());
 
+drop policy if exists "profiles: insert own" on profiles;
 create policy "profiles: insert own" on profiles
     for insert with check (id = auth.uid());
 
+drop policy if exists "profiles: update own" on profiles;
 create policy "profiles: update own" on profiles
     for update using (id = auth.uid());
 
@@ -53,9 +58,11 @@ create table if not exists player_achievements (
 
 alter table player_achievements enable row level security;
 
+drop policy if exists "achievements: read own" on player_achievements;
 create policy "achievements: read own" on player_achievements
     for select using (profile_id = auth.uid());
 
+drop policy if exists "achievements: insert own" on player_achievements;
 create policy "achievements: insert own" on player_achievements
     for insert with check (profile_id = auth.uid());
 
@@ -83,6 +90,7 @@ create table if not exists mp_assignments (
 
 alter table mp_assignments enable row level security;
 
+drop policy if exists "assignments: read own" on mp_assignments;
 create policy "assignments: read own" on mp_assignments
     for select using (profile_id = auth.uid());
 
@@ -114,6 +122,7 @@ create table if not exists mp_matches (
 
 alter table mp_matches enable row level security;
 
+drop policy if exists "matches: read if participant" on mp_matches;
 create policy "matches: read if participant" on mp_matches
     for select using (
         exists (
@@ -526,6 +535,128 @@ end;
 $$;
 
 grant execute on function mp_expire_turn(uuid) to authenticated;
+
+-- ============================================================
+-- mp_piece_fits — can this piece be legally placed anywhere on this grid?
+-- Mirrors the client's canFitAnywhere(): a placement is legal when every
+-- cell the piece covers is in bounds and all of them are currently the
+-- same colour. Used to verify a "stuck" claim server-side.
+-- ============================================================
+create or replace function mp_piece_fits(p_grid jsonb, p_piece jsonb)
+returns boolean
+language plpgsql
+immutable
+as $$
+declare
+    v_rows int; v_cols int;
+    v_required int; v_cell int; v_ok boolean;
+    r int; c int; pr int; pc int; tr int; tc int;
+    v_prow jsonb;
+begin
+    if p_piece is null or jsonb_typeof(p_piece) <> 'array' then return false; end if;
+    v_rows := jsonb_array_length(p_piece);
+    if v_rows = 0 then return false; end if;
+    v_cols := jsonb_array_length(p_piece -> 0);
+
+    for r in 0 .. 6 - v_rows loop
+        for c in 0 .. 6 - v_cols loop
+            v_required := null;
+            v_ok := true;
+            for pr in 0 .. v_rows - 1 loop
+                v_prow := p_piece -> pr;
+                for pc in 0 .. jsonb_array_length(v_prow) - 1 loop
+                    if (v_prow ->> pc)::int = 1 then
+                        tr := r + pr; tc := c + pc;
+                        if tr < 0 or tr >= 6 or tc < 0 or tc >= 6 then
+                            v_ok := false;
+                        else
+                            v_cell := ((p_grid -> tr) ->> tc)::int;
+                            if v_required is null then v_required := v_cell;
+                            elsif v_cell <> v_required then v_ok := false;
+                            end if;
+                        end if;
+                    end if;
+                    exit when not v_ok;
+                end loop;
+                exit when not v_ok;
+            end loop;
+            if v_ok then return true; end if;
+        end loop;
+    end loop;
+    return false;
+end;
+$$;
+
+-- ============================================================
+-- RPC: mp_fail_scramble — you're stuck, so take the hit and get a new hand.
+-- Mirrors the solo game-over test: you're stuck only when neither your
+-- current piece nor your held piece fits anywhere AND your hold slot is
+-- occupied (an empty hold always gives you an out). Being stuck is a FAIL:
+-- −1000 points, then your queue is replaced so play can continue rather
+-- than the match stalling.
+--
+-- The stuck test is enforced here, not trusted from the client, so nobody
+-- can reroll a bad-but-playable hand on demand.
+-- ============================================================
+create or replace function mp_fail_scramble(p_match_id uuid, p_new_queue jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+    v_self    uuid := auth.uid();
+    v_match   mp_matches%rowtype;
+    v_idx     int;
+    v_player  jsonb;
+    v_queue   jsonb;
+    v_held    jsonb;
+    v_penalty constant int := 1000;
+    v_score   int;
+begin
+    select * into v_match from mp_matches where id = p_match_id for update;
+    if not found then raise exception 'match not found'; end if;
+    if v_match.status <> 'active' then return to_jsonb(v_match); end if;
+
+    select ord - 1 into v_idx
+        from jsonb_array_elements(v_match.players) with ordinality as t(p, ord)
+        where (t.p->>'profile_id')::uuid = v_self;
+    if v_idx is null then raise exception 'not a participant'; end if;
+    if v_idx <> v_match.turn_index then raise exception 'not your turn'; end if;
+
+    v_player := v_match.players -> v_idx;
+    v_queue  := v_player -> 'queue';
+    v_held   := v_player -> 'held';
+
+    -- Verify the stuck claim.
+    if jsonb_typeof(v_held) = 'null' or v_held is null then
+        raise exception 'not stuck: hold is empty';
+    end if;
+    if jsonb_array_length(coalesce(v_queue, '[]'::jsonb)) > 0
+       and mp_piece_fits(v_match.grid, v_queue -> 0) then
+        raise exception 'not stuck: current piece fits';
+    end if;
+    if mp_piece_fits(v_match.grid, v_held) then
+        raise exception 'not stuck: held piece fits';
+    end if;
+
+    v_score := greatest(0, coalesce((v_player->>'score')::int, 0) - v_penalty);
+    v_player := jsonb_set(v_player, '{score}', to_jsonb(v_score));
+    v_player := jsonb_set(v_player, '{queue}', coalesce(p_new_queue, '[]'::jsonb));
+    v_player := jsonb_set(v_player, '{held}', 'null'::jsonb);
+    v_player := jsonb_set(v_player, '{can_hold}', 'true'::jsonb);
+
+    update mp_matches
+    set players = jsonb_set(v_match.players, array[v_idx::text], v_player),
+        updated_at = now()
+    where id = p_match_id;
+
+    select * into v_match from mp_matches where id = p_match_id;
+    return to_jsonb(v_match) || jsonb_build_object('scrambled', true, 'penalty', v_penalty);
+end;
+$$;
+
+grant execute on function mp_fail_scramble(uuid, jsonb) to authenticated;
 
 -- ============================================================
 -- RPC: mp_forfeit_match — quit a match early.
