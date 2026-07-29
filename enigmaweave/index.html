@@ -668,6 +668,55 @@
             #pause-btn { top: 12px; right: 12px; }
             .panel-inner { padding: 24px 20px; }
             .menu-link-btn, .play-again-btn { padding: 14px 28px; }
+
+            /* ===== END SCREENS: VERTICAL ON MOBILE =====
+               Both the solo game-over and the Versus results panel go to a
+               single full-width column: each result becomes a stacked
+               name-over-score card, and the buttons run full width down the
+               screen instead of sitting in a wide box. */
+            /* NB: never set `display` here — these panels are display:none
+               until JS reveals them, and a display value in this block would
+               override that and pin them open. Only the axis is set; the
+               container becomes a column when JS switches it to flex. */
+            #game-over, #mp-results {
+                width: 88vw;
+                max-width: 380px;
+                padding: 26px 20px;
+                flex-direction: column;
+                align-items: stretch;
+                gap: 4px;
+                max-height: 88vh;
+                overflow-y: auto;
+            }
+            #game-over h2.neon-text { font-size: 2.2rem; letter-spacing: 3px; }
+            #mp-results-title { font-size: 1.6rem; letter-spacing: 2px; margin-bottom: 14px; }
+            .game-over-subtitle { font-size: 0.8rem; letter-spacing: 2px; margin-bottom: 14px; }
+            #game-over p { font-size: 1rem; }
+
+            .mp-results-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+            .mp-result-row {
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 2px;
+                padding: 10px 12px;
+                background: rgba(20, 15, 40, 0.6);
+                border: 1px solid #2e2a4a;
+            }
+            .mp-result-row span:first-child { font-size: 0.85rem; color: #b8c6dd; letter-spacing: 1px; }
+            .mp-result-row span:last-child  { font-size: 1.5rem; font-weight: 900; color: #fff; }
+            .mp-result-row.win { border-color: #00ffcc; }
+
+            /* Full-width stacked buttons on both end screens */
+            #game-over .play-again-btn, #game-over .menu-link-btn,
+            #mp-results .play-again-btn, #mp-results .menu-link-btn {
+                display: block;
+                width: 100%;
+                margin: 6px 0 0;
+                box-sizing: border-box;
+            }
+            #sparks-earned { font-size: 0.85rem; }
+            .lb-input { width: 100%; max-width: none; }
         }
 
         /* Bigger tap targets on coarse pointers */
@@ -2676,6 +2725,29 @@
             if (versusChannel) { sb.removeChannel(versusChannel); versusChannel = null; }
             gameMode = 'versus-over';
             applyThemeBackground();   // results screen shows YOUR skin again
+
+            // Opponent quit: there's no contest to show a scoreboard for, so
+            // just say so and drop back to the menu rather than parading a
+            // result nobody played out.
+            const quitter = row.players.find(function (p) {
+                return p.forfeited && p.profile_id !== versusMyProfileId;
+            });
+            if (quitter) {
+                document.getElementById('pause-btn').style.display = 'none';
+                document.getElementById('multi-hud').style.display = 'none';
+                document.getElementById('mp-results').style.display = 'none';
+                preview = null;
+                isPaused = false;
+                document.getElementById('pause-menu').style.display = 'none';
+                showPopup('OPPONENT FORFEIT', theme().accent);
+                haptic(HAPTICS.clear);
+                checkAchievements('versus_win', { tookPenalty: versusTookPenalty });
+                setTimeout(function () {
+                    if (gameMode === 'versus-over') showHome();
+                }, 2200);   // let the pop-up play out first
+                return;
+            }
+
             const ranked = row.players.map(function (p) {
                 return { id: p.profile_id, name: p.name, score: p.score, forfeited: !!p.forfeited };
             }).sort(function (a, b) { return b.score - a.score; });
