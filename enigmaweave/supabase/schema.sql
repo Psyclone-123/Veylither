@@ -66,6 +66,34 @@ drop policy if exists "achievements: insert own" on player_achievements;
 create policy "achievements: insert own" on player_achievements
     for insert with check (profile_id = auth.uid());
 
+-- ---------- SLIDE MODE LEADERBOARD ----------
+-- One row per player: how many distinct levels they've solved and their
+-- total move count across those levels. Ranked by levels solved first,
+-- fewest total moves as the tie-break. Levels are identical for everyone
+-- (they're baked into the client), so this is a fair comparison.
+create table if not exists slide_scores (
+    profile_id    uuid primary key references profiles(id) on delete cascade,
+    display_name  text not null default 'PLAYER',
+    levels_solved int  not null default 0,
+    total_moves   int  not null default 0,
+    updated_at    timestamptz not null default now()
+);
+
+alter table slide_scores enable row level security;
+
+-- Readable by everyone (it's a leaderboard), writable only for your own row.
+drop policy if exists "slide: read all" on slide_scores;
+create policy "slide: read all" on slide_scores
+    for select using (true);
+
+drop policy if exists "slide: insert own" on slide_scores;
+create policy "slide: insert own" on slide_scores
+    for insert with check (profile_id = auth.uid());
+
+drop policy if exists "slide: update own" on slide_scores;
+create policy "slide: update own" on slide_scores
+    for update using (profile_id = auth.uid());
+
 -- ---------- VERSUS: MATCHMAKING QUEUE ----------
 -- No direct client access — only touched by the RPC functions below.
 create table if not exists mp_queue (

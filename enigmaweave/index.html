@@ -522,6 +522,61 @@
             text-shadow: 0 0 8px rgba(255, 213, 74, 0.45);
         }
 
+        /* ===== SLIDE MODE ===== */
+        #slide-win {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(15, 10, 30, 0.95);
+            padding: 30px 38px;
+            border-radius: 15px;
+            text-align: center;
+            color: #fff;
+            z-index: 10;
+            border: 2px solid #62cdff;
+            box-shadow: 0 0 22px rgba(98, 205, 255, 0.4);
+            display: none;
+            flex-direction: column;
+            align-items: stretch;
+            pointer-events: auto;
+            max-width: 92vw;
+        }
+        #slide-win-title {
+            font-size: 2.1rem;
+            font-weight: 900;
+            letter-spacing: 4px;
+            margin: 0 0 16px;
+            background: linear-gradient(90deg, #f271ff, #62cdff, #ffb07c);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .slide-stats { display: flex; gap: 18px; justify-content: center; margin-bottom: 12px; }
+        .slide-stat { display: flex; flex-direction: column; gap: 2px; min-width: 56px; }
+        .slide-stat span { font-size: 0.62rem; letter-spacing: 2px; color: #8b9bb4; }
+        .slide-stat b { font-size: 1.4rem; color: #fff; }
+        .slide-extra {
+            color: #ffd54a;
+            font-size: 0.85rem;
+            letter-spacing: 1px;
+            margin-bottom: 16px;
+            min-height: 18px;
+        }
+        .lb-tabs { display: flex; gap: 8px; justify-content: center; margin-bottom: 14px; }
+        .lb-tab {
+            background: transparent;
+            border: 1.5px solid #2e2a4a;
+            color: #8b9bb4;
+            font-family: inherit;
+            font-size: 0.72rem;
+            letter-spacing: 2px;
+            padding: 7px 16px;
+            border-radius: 7px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .lb-tab.active { border-color: #62cdff; color: #62cdff; box-shadow: 0 0 10px rgba(98,205,255,0.3); }
+
         /* ===== VERSUS HUD =====
            One slim bar across the top: both players' chips with the turn timer
            between them. Deliberately compact — on a phone every pixel it costs
@@ -678,7 +733,7 @@
                until JS reveals them, and a display value in this block would
                override that and pin them open. Only the axis is set; the
                container becomes a column when JS switches it to flex. */
-            #game-over, #mp-results {
+            #game-over, #mp-results, #slide-win {
                 width: 88vw;
                 max-width: 380px;
                 padding: 26px 20px;
@@ -709,7 +764,8 @@
 
             /* Full-width stacked buttons on both end screens */
             #game-over .play-again-btn, #game-over .menu-link-btn,
-            #mp-results .play-again-btn, #mp-results .menu-link-btn {
+            #mp-results .play-again-btn, #mp-results .menu-link-btn,
+            #slide-win .play-again-btn, #slide-win .menu-link-btn {
                 display: block;
                 width: 100%;
                 margin: 6px 0 0;
@@ -980,6 +1036,7 @@
             <button class="home-btn" onclick="openSkins()">◆ SKINS</button>
             <button class="home-btn" onclick="openSettings()">⚙ SETTINGS</button>
             <button class="home-btn" onclick="openLeaderboard()">🏆 LEADERBOARD</button>
+            <button class="home-btn" onclick="startSlide()">▦ SLIDE</button>
             <button class="home-btn" onclick="openAchievements()">⚑ ACHIEVEMENTS</button>
             <button class="home-btn" onclick="openVersusSetup()">⚔ VERSUS (ONLINE)</button>
         </div>
@@ -987,6 +1044,16 @@
             <button class="credits-link" onclick="openCredits()">CREDITS</button>
             <div class="copyright">&copy; 2026 Morphed</div>
         </div>
+    </div>
+
+    <!-- SLIDE: LEVEL COMPLETE -->
+    <div id="slide-win">
+        <h2 id="slide-win-title">SOLVED!</h2>
+        <div id="slide-win-stats" class="slide-stats"></div>
+        <div id="slide-win-extra" class="slide-extra"></div>
+        <button class="play-again-btn" id="slide-next-btn" onclick="slideNextLevel()">NEXT LEVEL ▶</button>
+        <button class="menu-link-btn" onclick="slideRestartLevel()">RETRY</button>
+        <button class="menu-link-btn" onclick="showHome()">MAIN MENU</button>
     </div>
 
     <!-- ACHIEVEMENTS PANEL -->
@@ -1076,6 +1143,10 @@
     <div id="leaderboard-panel">
         <div class="panel-inner">
             <h2 class="panel-title">LEADERBOARD</h2>
+            <div class="lb-tabs">
+                <button class="lb-tab active" id="lb-tab-score" onclick="setLbTab('score')">SCORE</button>
+                <button class="lb-tab" id="lb-tab-slide" onclick="setLbTab('slide')">SLIDE</button>
+            </div>
             <ol id="lb-list" class="lb-list"></ol>
             <button class="home-btn back-btn" onclick="showHome()">← BACK</button>
         </div>
@@ -1637,7 +1708,12 @@
             { id: 'sparks_5000',    name: 'Spark Hoarder',    desc: 'Earn 5,000 Sparks, lifetime.',                     icon: '✦' },
             { id: 'no_undo_clear',  name: 'Purist',           desc: 'Clear the board in a run without using undo.',     icon: '◇' },
             { id: 'versus_win',     name: 'Duelist',          desc: 'Win a Versus match.',                              icon: '⚔' },
-            { id: 'versus_comeback',name: 'Comeback Kid',     desc: 'Win a Versus match after taking a fail penalty.',  icon: '⚔' }
+            { id: 'versus_comeback',name: 'Comeback Kid',     desc: 'Win a Versus match after taking a fail penalty.',  icon: '⚔' },
+            { id: 'slide_first',    name: 'Unblocked',        desc: 'Solve your first Slide level.',                    icon: '▦' },
+            { id: 'slide_perfect',  name: 'Optimal',          desc: 'Solve a Slide level in par moves or fewer.',        icon: '▦' },
+            { id: 'slide_10',       name: 'Slide Apprentice', desc: 'Solve 10 Slide levels.',                           icon: '▦' },
+            { id: 'slide_50',       name: 'Slide Master',     desc: 'Solve 50 Slide levels.',                           icon: '▩' },
+            { id: 'slide_hard',     name: 'Deep Cut',         desc: 'Solve a Slide level with a par of 40 or more.',     icon: '▩' }
         ];
         const LS_ACHIEVEMENTS = 'ew_achievements';
         const LS_STAT_CLEARS = 'ew_stat_clears';
@@ -1710,6 +1786,15 @@
                 case 'versus_win': {
                     unlockAchievement('versus_win');
                     if (payload.tookPenalty) unlockAchievement('versus_comeback');
+                    break;
+                }
+                case 'slide_solve': {
+                    unlockAchievement('slide_first');
+                    if (payload.moves <= payload.par) unlockAchievement('slide_perfect');
+                    if (payload.par >= 40) unlockAchievement('slide_hard');
+                    const n = slideSolvedCount();
+                    if (n >= 10) unlockAchievement('slide_10');
+                    if (n >= 50) unlockAchievement('slide_50');
                     break;
                 }
             }
@@ -2363,6 +2448,7 @@
         }
 
         function restartGame() {
+            if (gameMode === 'slide') { slideRestartLevel(); resumeGame(); return; }
             if (gameMode === 'versus' || gameMode === 'versus-over') { showHome(); return; }  // no restarting a live opponent match — leave instead
             isGameOver = false;
             document.getElementById('game-over').style.display = 'none';
@@ -2890,6 +2976,425 @@
         window.forfeitVersusMatch = forfeitVersusMatch;
 
         // ==========================================
+        // SLIDE MODE — Klotski / sliding-block puzzle
+        // A 4x5 board holding one 2x2 GOAL block, plus 1x1s, vertical 1x2s and
+        // horizontal 2x1s, with exactly two empty cells. Slide pieces around to
+        // walk the goal block down to the exit at the bottom centre.
+        //
+        // Levels are pre-generated (see tools/klotski_build.js): each was found
+        // by enumerating the full reachable state graph from a solved board and
+        // taking a state at an exact BFS distance from the win. That means every
+        // level is guaranteed solvable, ships with a true optimal move count
+        // (par), and — critically for the shared leaderboard — level N is
+        // identical for every player.
+        //
+        // Encoding: 3 chars per piece (type, row, col) then '|' then par.
+        //   G=goal 2x2, S=single 1x1, V=vertical 1x2, H=horizontal 2x1
+        // ==========================================
+        const SLIDE_ROWS = 5, SLIDE_COLS = 4;
+        const SLIDE_GOAL_R = 3, SLIDE_GOAL_C = 1;   // where the goal block must land
+        const SLIDE_LEVEL_DATA = [
+            'G21V30V23V10V01H02S43S42S00S12|4','G30H02H12H21H10S42S33S01S00S23S43|4',
+            'G32S00S30S03S13V11V31H01S12S40S22S23|4','G21S33S23H02V20V01H12S43S00S42S40|5',
+            'G32V30V13V31V12H00S03S02S11S10|5','G30H00H02H10H12S42S32S21S20S33S43|5',
+            'G32S11S01S22S12V00V13H02S40S21S41S31|5','G32S01S22H11V30V10H02S41S31S23S00|6',
+            'G30V00V32V12V13H02S11S43S21S20|6','G32H10H01H30H20S00S03S41S40S12S13|6',
+            'G30S11S01S13S12V00V32H02S43S22S23S20|6','G21S11S03H00V10V23H12S30S43S40S42|7',
+            'G32V10V02V30V03H21S01S23S00S31|7','G32H01H11H30H21S00S20S41S40S23S03|7',
+            'G21S10S20S11S30V03V23H01S40S41S12S42|7','G20S41S40H00V02V03H10S33S23S43S42|8',
+            'G32V21V03V20V01H22S02S40S12S10|9','G30H11H22H20H32S13S02S00S10S42S43|9',
+            'G32S12S01S03S02V00V31H20S30S40S22S13|9','G21S43S33H11V10V30H00S41S02S42S23|10',
+            'G30V11V33V12V03H00S02S32S42S10|11','G30H10H02H21H32S13S20S12S00S42S43|10',
+            'G30S02S43S23S13V12V32H20S00S01S33S10|10','G20S01S12H02V00V32H22S40S11S41S13|12',
+            'G22V30V03V10V21H01S11S12S43S00|12','G20H02H12H22H10S40S32S01S00S33S41|12',
+            'G22S10S00S12S02V01V03H20S40S41S43S30|11','G20S42S40H01V22V13H10S03S12S00S33|13',
+            'G30V10V23V32V03H11S02S22S43S00|14','G22H00H02H12H20S10S43S30S42S41S11|13',
+            'G30S11S01S03S00V02V13H21S42S33S43S32|13','G22S40S43H02V00V31H12S20S01S30S21|15',
+            'G22V30V03V31V02H00S42S21S20S11|16','G22H30H00H40H12S02S03S43S42S21S11|15',
+            'G22S00S03S42S43V30V21H01S12S41S10S11|14','G20S41S40H02V22V13H00S11S10S12S33|17',
+            'G20V00V32V01V13H02S33S41S22S40|18','G22H02H12H40H10S00S01S43S42S31S21|16',
+            'G11S00S31S03S13V10V23H01S30S41S43S32|16','G22S12S10H01V11V03H40S43S20S42S31|19',
+            'G20V00V32V01V33H22S41S40S02S03|20','G22H00H02H12H40S30S11S43S42S31S21|18',
+            'G20S41S40S00S03V32V13H01S12S11S22S43|17','G21S12S11H01V00V03H42S33S20S23S30|21',
+            'G12V10V32V30V33H02S01S41S11S31|21','G12H00H02H40H30S20S21S43S42S10S11|20',
+            'G12S10S43S00S01V20V11H02S32S40S42S41|19','G20S02S32H00V23V03H42S12S40S11S41|23',
+            'G10V30V33V31V13H02S00S22S01S12|23','G10H22H01H31H12S43S03S00S42S30S41|21',
+            'G20S01S11S23S02V22V33H12S10S00S40S42|20','G10S03S02H00V13V12H31S42S40S33S41|25',
+            'G12V01V32V00V33H02S20S30S31S41|26','G20H22H00H42H12S32S02S11S33S40S41|23',
+            'G12S00S03S33S43V30V32H01S11S31S10S21|22','G21S01S00H10V20V13H41S33S40S43S12|27',
+            'G12V01V32V10V33H02S31S41S00S30|28','G10H00H02H22H32S30S31S13S12S40S43|25',
+            'G10S40S22S30S02V32V03H00S41S31S33S43|24','G11S31S01H02V00V23H42S30S40S20S41|29',
+            'G12V32V11V31V20H02S10S33S01S43|30','G02H10H00H20H22S33S43S32S40S42S41|27',
+            'G21S00S02S13S03V01V33H41S10S12S20S40|25','G21S03S13H11V10V23H42S00S30S02S41|31',
+            'G12V10V32V21V33H02S01S40S30S41|32','G10H12H01H30H40S33S03S00S22S42S43|29',
+            'G12S40S10S00S03V31V33H01S11S20S32S42|27','G11S41S01H02V00V13H32S31S40S20S43|33',
+            'G11V30V03V10V31H00S23S32S02S33|34','G12H02H10H32H41S30S21S31S40S00S01|31',
+            'G00S41S32S30S12V33V13H02S20S21S31S42|29','G11S13S00H01V20V23H31S42S40S03S41|35',
+            'G00V31V12V30V32H02S20S43S21S33|36','G20H10H00H42H40S13S23S03S12S32S33|33',
+            'G02S10S33S11S43V20V32H00S22S40S23S21|31','G02S11S22H31V20V00H41S23S40S33S01|38',
+            'G10V32V13V30V33H01S31S22S03S41|39','G21H02H12H42H10S20S41S30S40S00S01|35',
+            'G10S01S00S23S33V12V03H41S43S30S40S31|32','G12S01S20H42V30V00H32S21S11S41S03|40',
+            'G10V22V03V30V23H00S31S12S02S41|41','G02H10H00H40H31S22S33S23S20S30S43|37',
+            'G22S00S11S01S03V10V21H42S13S12S30S41|34','G02S10S31H32V20V01H40S43S21S42S00|42',
+            'G02V20V22V11V33H00S10S42S23S31|43','G00H12H31H42H40S03S33S02S23S20S22|39',
+            'G02S10S23S11S33V31V22H00S21S40S20S43|36','G30S13S23H02V00V01H42S33S12S22S20|44',
+            'G11V00V32V30V23H02S01S31S43S41|46','G02H10H00H32H42S20S31S30S40S21S22|41',
+            'G21S00S01S02S03V10V30H42S41S33S11S23|38','G02S11S10H00V20V22H40S43S31S23S21|47',
+            'G01V30V03V31V22H20S10S23S00S33|48','G12H00H32H42H40S11S03S10S02S21S31|43',
+            'G02S10S20S00S01V30V21H32S43S41S42S23|40','G02S11S10H00V20V22H40S43S33S42S31|49',
+            'G12V10V01V30V32H02S33S21S43S41|50','G01H22H32H30H40S13S43S03S42S00S20|45',
+            'G30S02S22S11S03V10V13H42S33S32S00S01|42','G32S22S00H30V10V11H40S01S02S23S13|52',
+            'G01V20V03V31V33H22S21S42S00S32|53','G22H00H02H10H41S30S12S20S21S40S31|47',
+            'G01S23S00S13S22V10V21H32S41S40S42S30|44','G02S40S00H31V11V33H41S22S10S23S01|54',
+            'G11V31V13V00V32H01S20S33S03S30|55','G10H02H12H42H30S22S41S01S00S32S23|49',
+            'G01S20S03S00S33V30V13H31S43S21S22S42|46','G02S21S10H30V01V23H41S32S20S22S00|56',
+            'G01V00V13V31V33H21S42S40S03S20|58','G22H01H30H42H40S10S13S00S12S20S21|51',
+            'G01S20S10S00S03V21V13H42S22S33S30S41|48','G00S12S02H22V20V03H32S43S42S41S21|59',
+            'G10V12V03V32V23H01S43S41S31S30|60','G12H02H20H42H30S00S01S11S32S40S10|54',
+            'G02S00S22S32S21V01V23H30S20S41S40S43|50','G02S00S10H30V01V23H41S43S21S32S40|61',
+            'G11V00V03V30V31H32S23S42S01S43|63','G02H30H20H42H40S11S01S22S32S10S33|56',
+            'G00S21S22S20S03V02V13H31S43S30S40S33|52','G11S00S02H31V20V03H40S43S23S42S33|64',
+            'G11V00V03V20V33H31S42S41S02S40|65','G22H20H01H41H30S13S03S12S43S40S10|58',
+            'G02S10S32S22S21V01V23H40S43S42S30S31|54','G01S00S03H21V10V13H41S43S31S40S30|66',
+            'G01V30V13V22V33H20S10S31S00S42|68','G20H01H11H22H42S40S13S32S03S00S10|60',
+            'G02S23S41S32S42V10V01H21S40S30S43S00|56','G01S30S20H21V00V03H31S42S23S33S41|69',
+            'G00V30V02V31V03H21S42S43S20S32|70','G22H20H10H41H30S13S03S00S43S40S01|63',
+            'G02S31S01S11S00V22V33H20S10S40S23S42|58','G12S00S21H30V01V33H41S10S20S02S32|72',
+            'G01V30V03V32V33H22S10S21S00S31|73','G20H01H12H22H42S10S41S11S00S32S03|65',
+            'G02S22S30S40S11V00V23H20S42S32S31S43|60','G12S10S02H20V30V33H31S42S03S11S41|74',
+            'G01V00V33V20V31H21S13S32S03S23|76','G12H30H20H41H32S03S02S00S43S40S11|67',
+            'G01S23S43S33S13V31V32H21S03S30S00S10|62','G00S41S31H22V20V02H32S42S03S43S40|77',
+            'G01V00V22V30V31H20S33S43S13S42|78','G12H30H20H41H32S03S01S10S43S40S00|69',
+            'G20S10S00S43S41V01V03H22S42S32S40S33|64','G02S32S23H21V01V33H30S00S41S42S40|79',
+            'G02V01V33V30V22H20S41S00S23S42|81','G10H22H32H30H41S02S40S13S12S43S03|72',
+            'G01S22S43S33S23V31V32H20S13S30S00S10|66','G00S30S20H22V21V03H32S42S12S43S41|82',
+            'G02V01V32V10V21H22S40S30S43S41|84','G02H30H20H41H22S01S00S10S43S40S11|74',
+            'G01S33S42S43S13V31V22H20S03S40S00S10|68','G00S43S23H20V31V32H12S02S33S03S30|85',
+            'G00V31V02V32V13H20S33S43S40S03|86','G00H22H31H20H41S02S40S13S12S33S03|76',
+            'G12S01S03S02S00V32V33H10S21S30S31S41|70','G02S40S20H22V21V32H10S30S01S43S00|87',
+            'G02V01V32V10V21H22S40S00S43S41|89','G00H20H32H30H41S02S40S22S12S43S23|79',
+            'G10S00S03S01S02V30V32H12S23S43S33S22|72','G00S42S33H20V31V22H12S02S43S03S40|90'
+        ];
+
+        // ===== SKIN -> PIECE COLOURS =====
+        // Every skin drives this mode by hue: the goal block wears the skin's
+        // accent untouched so it always reads as "the one you're moving", and
+        // the three filler piece types are the same colour rotated around the
+        // wheel. That keeps each skin's identity while making the four piece
+        // shapes instantly distinguishable.
+        const SLIDE_HUE_SHIFT = { s: 45, v: 165, h: 255 };   // degrees off the accent
+        function hexToHsl(hex) {
+            const c = hexToRgb(hex);
+            const r = c.r / 255, g = c.g / 255, b = c.b / 255;
+            const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+            let h = 0, s = 0; const l = (mx + mn) / 2;
+            const d = mx - mn;
+            if (d) {
+                s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+                if (mx === r) h = ((g - b) / d + (g < b ? 6 : 0));
+                else if (mx === g) h = (b - r) / d + 2;
+                else h = (r - g) / d + 4;
+                h *= 60;
+            }
+            return { h: h, s: s, l: l };
+        }
+        function hslToHex(h, s, l) {
+            h = ((h % 360) + 360) % 360;
+            s = Math.max(0, Math.min(1, s));
+            l = Math.max(0, Math.min(1, l));
+            const c = (1 - Math.abs(2 * l - 1)) * s;
+            const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+            const m = l - c / 2;
+            let r = 0, g = 0, b = 0;
+            if (h < 60)       { r = c; g = x; }
+            else if (h < 120) { r = x; g = c; }
+            else if (h < 180) { g = c; b = x; }
+            else if (h < 240) { g = x; b = c; }
+            else if (h < 300) { r = x; b = c; }
+            else              { r = c; b = x; }
+            const to = v => ('0' + Math.round((v + m) * 255).toString(16)).slice(-2);
+            return '#' + to(r) + to(g) + to(b);
+        }
+        function slidePieceColor(type) {
+            const t = theme();
+            if (type === 'goal') return t.accent;
+            const base = hexToHsl(t.accent);
+            // Floor the saturation/lightness so very dark or washed-out skin
+            // accents still yield readable, distinct blocks.
+            const s = Math.max(0.45, Math.min(0.95, base.s));
+            const l = Math.max(0.45, Math.min(0.68, base.l));
+            return hslToHex(base.h + SLIDE_HUE_SHIFT[type], s, l);
+        }
+
+        const SLIDE_SIZES = { goal: { w: 2, h: 2 }, s: { w: 1, h: 1 }, v: { w: 1, h: 2 }, h: { w: 2, h: 1 } };
+        const SLIDE_TYPE_OF = { G: 'goal', S: 's', V: 'v', H: 'h' };
+        const slideSize = t => SLIDE_SIZES[t] || SLIDE_SIZES.s;
+
+        let slideLevel = 0;            // current level index
+        let slidePieces = [];          // [{type,r,c}]
+        let slidePar = 0;              // optimal move count for this level
+        let slideMoves = 0;
+        let slideWon = false;
+        let slideDrag = null;          // {idx, startX, startY, origR, origC, axis}
+        let slideWinPulse = 0;
+
+        const LS_SLIDE_PROGRESS = 'ew_slide_progress';   // highest level unlocked
+        const LS_SLIDE_BEST = 'ew_slide_best';           // { levelIdx: bestMoves }
+        const LS_SLIDE_SOLVED = 'ew_slide_solved';       // total distinct levels solved
+
+        function slideLoadBest() {
+            try { return JSON.parse(EWStore.get(LS_SLIDE_BEST)) || {}; } catch (e) { return {}; }
+        }
+        let slideBest = slideLoadBest();
+        function slideSaveBest() { EWStore.set(LS_SLIDE_BEST, JSON.stringify(slideBest)); }
+        function slideProgress() {
+            const v = parseInt(EWStore.get(LS_SLIDE_PROGRESS), 10);
+            return Number.isFinite(v) ? v : 0;
+        }
+        function slideSolvedCount() { return Object.keys(slideBest).length; }
+        function slideTotalMoves() {
+            return Object.keys(slideBest).reduce(function (a, k) { return a + slideBest[k]; }, 0);
+        }
+
+        function slideDecode(str) {
+            const bar = str.indexOf('|');
+            const body = str.slice(0, bar);
+            const par = parseInt(str.slice(bar + 1), 10);
+            const pieces = [];
+            for (let i = 0; i + 2 < body.length + 1; i += 3) {
+                pieces.push({ type: SLIDE_TYPE_OF[body[i]], r: +body[i + 1], c: +body[i + 2] });
+            }
+            return { pieces: pieces, par: par };
+        }
+
+        // Occupancy grid of piece indices (-1 empty). `ignore` leaves one piece
+        // out, which is what makes "can this piece move here" checks work.
+        function slideGrid(ignore) {
+            const g = [];
+            for (let r = 0; r < SLIDE_ROWS; r++) g.push(new Array(SLIDE_COLS).fill(-1));
+            for (let i = 0; i < slidePieces.length; i++) {
+                if (i === ignore) continue;
+                const p = slidePieces[i], s = slideSize(p.type);
+                for (let dr = 0; dr < s.h; dr++)
+                    for (let dc = 0; dc < s.w; dc++) {
+                        const rr = p.r + dr, cc = p.c + dc;
+                        if (rr >= 0 && rr < SLIDE_ROWS && cc >= 0 && cc < SLIDE_COLS) g[rr][cc] = i;
+                    }
+            }
+            return g;
+        }
+
+        function slideCanPlace(idx, nr, nc) {
+            const p = slidePieces[idx], s = slideSize(p.type);
+            if (nr < 0 || nc < 0 || nr + s.h > SLIDE_ROWS || nc + s.w > SLIDE_COLS) return false;
+            const g = slideGrid(idx);
+            for (let dr = 0; dr < s.h; dr++)
+                for (let dc = 0; dc < s.w; dc++)
+                    if (g[nr + dr][nc + dc] !== -1) return false;
+            return true;
+        }
+
+        // How far this piece can slide along one axis before something blocks it.
+        function slideMaxStep(idx, dr, dc, want) {
+            const p = slidePieces[idx];
+            let step = 0;
+            for (let k = 1; k <= Math.abs(want); k++) {
+                if (!slideCanPlace(idx, p.r + dr * k, p.c + dc * k)) break;
+                step = k;
+            }
+            return step;
+        }
+
+        function slideHitTest(x, y) {
+            if (!slideCell) return -1;
+            const c = Math.floor((x - slideBoardX) / slideCell);
+            const r = Math.floor((y - slideBoardY) / slideCell);
+            if (r < 0 || r >= SLIDE_ROWS || c < 0 || c >= SLIDE_COLS) return -1;
+            return slideGrid(-1)[r][c];
+        }
+
+        function slideIsWon() {
+            const g = slidePieces.find(function (p) { return p.type === 'goal'; });
+            return !!g && g.r === SLIDE_GOAL_R && g.c === SLIDE_GOAL_C;
+        }
+
+        function slideLoadLevel(idx) {
+            slideLevel = Math.max(0, Math.min(SLIDE_LEVEL_DATA.length - 1, idx));
+            const d = slideDecode(SLIDE_LEVEL_DATA[slideLevel]);
+            slidePieces = d.pieces;
+            slidePar = d.par;
+            slideMoves = 0;
+            slideWon = false;
+            slideDrag = null;
+            slideWinPulse = 0;
+            document.getElementById('slide-win').style.display = 'none';
+            // The win panel hides the pause button — bring it back for the new level.
+            if (gameMode === 'slide' && appScreen === 'playing') {
+                document.getElementById('pause-btn').style.display = 'flex';
+            }
+            updateBoardTension();
+        }
+
+        function startSlide() {
+            playTransitionSound();
+            if (!hasStartedMusic) startMusic();
+            exitVersusMatch();
+            gameMode = 'slide';
+            appScreen = 'playing';
+            isGameOver = false;
+            isPaused = false;
+            flameParticles = []; flood = null; crystals = null; fireworks = []; rockets = [];
+            cyberBits = []; cyberRings = []; cyberSurge = null;
+            document.getElementById('home-screen').style.display = 'none';
+            document.getElementById('message').style.display = 'block';
+            document.getElementById('pause-menu').style.display = 'none';
+            document.getElementById('pause-btn').style.display = 'flex';
+            showRewindBar(false);
+            document.getElementById('multi-hud').style.display = 'none';
+            slideLoadLevel(slideResumeLevel());
+            resizeGame();
+            updateChromeVisibility();
+            showMessage('Slide the big block to the exit');
+        }
+        function slideResumeLevel() {
+            const p = slideProgress();
+            return Math.min(p, SLIDE_LEVEL_DATA.length - 1);
+        }
+
+        function slideRestartLevel() {
+            slideLoadLevel(slideLevel);
+            haptic(HAPTICS.hold);
+        }
+        function slideNextLevel() {
+            if (slideLevel + 1 >= SLIDE_LEVEL_DATA.length) { showHome(); return; }
+            slideLoadLevel(slideLevel + 1);
+            haptic(HAPTICS.hold);
+        }
+
+        // ===== WIN =====
+        function slideOnWin() {
+            if (slideWon) return;
+            slideWon = true;
+            slideWinPulse = 1;
+
+            const prevBest = slideBest[slideLevel];
+            const isFirst = prevBest === undefined;
+            const improved = !isFirst && slideMoves < prevBest;
+            if (isFirst || improved) { slideBest[slideLevel] = slideMoves; slideSaveBest(); }
+
+            // Unlock the next level.
+            if (slideLevel + 1 > slideProgress()) EWStore.set(LS_SLIDE_PROGRESS, slideLevel + 1);
+
+            // Sparks: only paid the FIRST time a level is solved, so replaying an
+            // easy level can't be farmed. Scales with the level's par (difficulty).
+            let earned = 0;
+            if (isFirst) {
+                earned = 20 + Math.round(slidePar * 2.5);
+                addSparks(earned);
+            }
+
+            playClearEffects();
+            checkAchievements('slide_solve', { level: slideLevel, moves: slideMoves, par: slidePar });
+            slideSyncLeaderboard();
+
+            document.getElementById('slide-win-title').textContent = (slideMoves <= slidePar) ? 'PERFECT!' : 'SOLVED!';
+            document.getElementById('slide-win-stats').innerHTML =
+                '<div class="slide-stat"><span>MOVES</span><b>' + slideMoves + '</b></div>' +
+                '<div class="slide-stat"><span>PAR</span><b>' + slidePar + '</b></div>' +
+                '<div class="slide-stat"><span>BEST</span><b>' + slideBest[slideLevel] + '</b></div>';
+            const extra = document.getElementById('slide-win-extra');
+            extra.innerHTML = earned ? ('+' + earned.toLocaleString() + ' \u2726 Sparks')
+                                     : (improved ? 'New personal best!' : 'Already solved \u2014 no Sparks');
+            document.getElementById('slide-next-btn').textContent =
+                (slideLevel + 1 >= SLIDE_LEVEL_DATA.length) ? 'ALL LEVELS DONE' : 'NEXT LEVEL \u25b6';
+            document.getElementById('slide-win').style.display = 'flex';
+            document.getElementById('pause-btn').style.display = 'none';
+        }
+
+        // Leaderboard: ranked by levels solved, then fewest total moves.
+        function slideSyncLeaderboard() {
+            if (!sb) return;
+            ensureIdentity().then(function (uid) {
+                if (!uid) return;
+                sb.from('slide_scores').upsert({
+                    profile_id: uid,
+                    display_name: displayName,
+                    levels_solved: slideSolvedCount(),
+                    total_moves: slideTotalMoves()
+                }, { onConflict: 'profile_id' }).catch(function () {});
+            });
+        }
+
+        // ===== INPUT =====
+        function slidePointerDown(pos) {
+            if (slideWon) return;
+            const idx = slideHitTest(pos.x, pos.y);
+            if (idx < 0) return;
+            initAudio();
+            slideDrag = {
+                idx: idx, startX: pos.x, startY: pos.y,
+                origR: slidePieces[idx].r, origC: slidePieces[idx].c, axis: null
+            };
+            haptic(HAPTICS.hold);
+        }
+
+        function slidePointerMove(pos) {
+            if (!slideDrag || slideWon) return;
+            const dx = pos.x - slideDrag.startX;
+            const dy = pos.y - slideDrag.startY;
+            // Lock to whichever axis the drag commits to first — sliding blocks
+            // only ever travel along one axis at a time.
+            if (!slideDrag.axis) {
+                if (Math.abs(dx) < slideCell * 0.3 && Math.abs(dy) < slideCell * 0.3) return;
+                slideDrag.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+            }
+            const p = slidePieces[slideDrag.idx];
+            // Reset to the drag origin so the step is measured from a clean state.
+            p.r = slideDrag.origR; p.c = slideDrag.origC;
+            if (slideDrag.axis === 'x') {
+                const want = Math.round(dx / slideCell);
+                if (want !== 0) {
+                    const dir = want > 0 ? 1 : -1;
+                    const step = slideMaxStep(slideDrag.idx, 0, dir, want);
+                    p.c = slideDrag.origC + dir * step;
+                }
+            } else {
+                const want = Math.round(dy / slideCell);
+                if (want !== 0) {
+                    const dir = want > 0 ? 1 : -1;
+                    const step = slideMaxStep(slideDrag.idx, dir, 0, want);
+                    p.r = slideDrag.origR + dir * step;
+                }
+            }
+        }
+
+        function slidePointerUp() {
+            if (!slideDrag) return;
+            const p = slidePieces[slideDrag.idx];
+            const moved = Math.abs(p.r - slideDrag.origR) + Math.abs(p.c - slideDrag.origC);
+            const idx = slideDrag.idx;
+            slideDrag = null;
+            if (moved > 0) {
+                // Moves are counted in CELLS travelled, matching how par was
+                // computed, so "under par" means the same thing to the solver.
+                slideMoves += moved;
+                playPlaceSound();
+                haptic(HAPTICS.place);
+                const s = slideSize(slidePieces[idx].type);
+                const cx = slideBoardX + (slidePieces[idx].c + s.w / 2) * slideCell;
+                const cy = slideBoardY + (slidePieces[idx].r + s.h / 2) * slideCell;
+                const col = hexToRgb(slidePieceColor(slidePieces[idx].type));
+                injectFluid(cx, cy, col.r / 255, col.g / 255, col.b / 255, 320, 9,
+                            (Math.random() - 0.5) * 3, -(3 + Math.random() * 4));
+                if (slideIsWon()) slideOnWin();
+            }
+        }
+
+        window.startSlide = startSlide;
+        window.slideRestartLevel = slideRestartLevel;
+        window.slideNextLevel = slideNextLevel;
+
+        // ==========================================
         // UNDO / REDO  — rewind up to 3 moves. Every placement and hold pushes a
         // full state snapshot first; the stacks RESET on every board clear, so
         // you can never rewind past a solve.
@@ -2987,7 +3492,10 @@
             const inVersus = (gameMode === 'versus');
             const restartBtn = document.getElementById('pause-restart-btn');
             const forfeitBtn = document.getElementById('pause-forfeit-btn');
-            if (restartBtn) restartBtn.style.display = inVersus ? 'none' : 'block';
+            if (restartBtn) {
+                restartBtn.style.display = inVersus ? 'none' : 'block';
+                restartBtn.textContent = (gameMode === 'slide') ? '↻ RESTART LEVEL' : '↻ RESTART';
+            }
             if (forfeitBtn) forfeitBtn.style.display = inVersus ? 'block' : 'none';
             document.getElementById('pause-menu').style.display = 'flex';
             haptic(HAPTICS.hold);
@@ -3123,6 +3631,8 @@
 
             const pos = getPointerPos(e);
 
+            if (gameMode === 'slide') { slidePointerDown(pos); return; }
+
             // 1. Hold box
             if (pos.x >= holdBoxX && pos.x <= holdBoxX + holdBoxSize &&
                 pos.y >= holdBoxY && pos.y <= holdBoxY + holdBoxSize) {
@@ -3159,6 +3669,12 @@
             if (isGameOver || isPaused) { preview = null; return; }
             const pos = getPointerPos(e);
 
+            if (gameMode === 'slide') {
+                if (e.type === 'touchmove' && e.cancelable) e.preventDefault();
+                slidePointerMove(pos);
+                return;
+            }
+
             if (e.type === 'touchmove') {
                 if (e.cancelable) e.preventDefault();
                 if (isDragging) {
@@ -3172,6 +3688,7 @@
 
         function handlePointerUp(e) {
             if (appScreen !== 'playing' || isGameOver || isPaused) { isDragging = false; preview = null; return; }
+            if (gameMode === 'slide') { slidePointerUp(); return; }
             if (!isDragging) return;
             isDragging = false;
             const pos = getPointerPos(e);
@@ -3184,7 +3701,13 @@
         window.addEventListener('mousemove', handlePointerMove);
         window.addEventListener('touchmove', handlePointerMove, {passive: false});
         window.addEventListener('touchend', handlePointerUp, {passive: false});
-        window.addEventListener('touchcancel', () => { isDragging = false; preview = null; });
+        // Mouse-up matters only for SLIDE (the block game places on mouse-down),
+        // but it must exist or a mouse drag there would never commit.
+        window.addEventListener('mouseup', function (e) { if (gameMode === 'slide') handlePointerUp(e); });
+        window.addEventListener('touchcancel', () => {
+            isDragging = false; preview = null;
+            if (gameMode === 'slide') slidePointerUp();
+        });
 
         // Clear preview on mouse leave board area roughly
         window.addEventListener('mouseout', () => { if (!activePointerIsTouch) preview = null; });
@@ -3209,6 +3732,9 @@
 
             // Portrait / narrow screens: stack the UI instead of side-by-side.
             isPortrait = cw < 720 || cw < ch;
+
+            // SLIDE has its own 4x5 board and no hold/queue furniture.
+            if (gameMode === 'slide') { slideLayout(); return; }
 
             // Reserve room for the opponent strip only while a Versus match is
             // actually on screen — solo keeps every pixel for the board.
@@ -3492,6 +4018,148 @@
                 }
             }
             ctx.restore();
+        }
+
+        // ===== SLIDE MODE RENDERING =====
+        // 2D take on the 3D concept: same board, same rules, drawn with the
+        // existing neon (or manga) block language so it sits inside Morphed
+        // rather than looking bolted on.
+        let slideCell = 0, slideBoardX = 0, slideBoardY = 0;
+
+        function slideLayout() {
+            const topPad = isPortrait ? 74 : 96;
+            const botPad = isPortrait ? 58 : 64;
+            const availW = cw * (isPortrait ? 0.92 : 0.6);
+            const availH = ch - topPad - botPad;
+            slideCell = Math.max(28, Math.floor(Math.min(availW / SLIDE_COLS, availH / SLIDE_ROWS)));
+            const w = slideCell * SLIDE_COLS, h = slideCell * SLIDE_ROWS;
+            slideBoardX = Math.round(cw / 2 - w / 2);
+            slideBoardY = Math.round(topPad + (availH - h) / 2);
+        }
+
+        function drawSlideRounded(x, y, w, h, color, alpha, glow) {
+            const t = theme();
+            ctx.save();
+            ctx.globalAlpha = alpha == null ? 1 : alpha;
+            if (t.style === 'manga') {
+                ctx.fillStyle = color;
+                ctx.fillRect(x, y, w, h);
+                ctx.strokeStyle = t.ink || '#241019';
+                ctx.lineWidth = Math.max(1.5, slideCell * 0.07);
+                ctx.strokeRect(x + 0.8, y + 0.8, w - 1.6, h - 1.6);
+                ctx.restore();
+                return;
+            }
+            const r = Math.min(w, h) * 0.16;
+            ctx.beginPath();
+            ctx.moveTo(x + r, y);
+            ctx.arcTo(x + w, y, x + w, y + h, r);
+            ctx.arcTo(x + w, y + h, x, y + h, r);
+            ctx.arcTo(x, y + h, x, y, r);
+            ctx.arcTo(x, y, x + w, y, r);
+            ctx.closePath();
+            if (glow) { ctx.shadowColor = color; ctx.shadowBlur = glow; }
+            ctx.fillStyle = color;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            // top sheen, same treatment the block pieces get
+            ctx.save();
+            ctx.clip();
+            ctx.fillStyle = 'rgba(255,255,255,0.22)';
+            ctx.fillRect(x, y, w, h * 0.3);
+            ctx.restore();
+            ctx.restore();
+        }
+
+        function drawSlideMode() {
+            const t = theme();
+            const bw = slideCell * SLIDE_COLS, bh = slideCell * SLIDE_ROWS;
+
+            // Board well
+            ctx.save();
+            ctx.fillStyle = 'rgba(10, 8, 24, 0.55)';
+            ctx.fillRect(slideBoardX, slideBoardY, bw, bh);
+            ctx.strokeStyle = t.accent;
+            ctx.lineWidth = 2.5;
+            ctx.strokeRect(slideBoardX - 1, slideBoardY - 1, bw + 2, bh + 2);
+
+            // Faint cell grid
+            ctx.strokeStyle = t.style === 'manga' ? 'rgba(36,16,25,0.14)' : 'rgba(255,255,255,0.06)';
+            ctx.lineWidth = 1;
+            for (let c = 1; c < SLIDE_COLS; c++) {
+                ctx.beginPath();
+                ctx.moveTo(slideBoardX + c * slideCell, slideBoardY);
+                ctx.lineTo(slideBoardX + c * slideCell, slideBoardY + bh);
+                ctx.stroke();
+            }
+            for (let r = 1; r < SLIDE_ROWS; r++) {
+                ctx.beginPath();
+                ctx.moveTo(slideBoardX, slideBoardY + r * slideCell);
+                ctx.lineTo(slideBoardX + bw, slideBoardY + r * slideCell);
+                ctx.stroke();
+            }
+
+            // Exit target: dashed outline where the goal block has to end up.
+            const ex = slideBoardX + SLIDE_GOAL_C * slideCell;
+            const ey = slideBoardY + SLIDE_GOAL_R * slideCell;
+            ctx.setLineDash([7, 6]);
+            ctx.strokeStyle = t.valid;
+            ctx.lineWidth = 2;
+            ctx.globalAlpha = 0.75;
+            ctx.strokeRect(ex + 3, ey + 3, slideCell * 2 - 6, slideCell * 2 - 6);
+            ctx.setLineDash([]);
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = t.valid;
+            ctx.font = Math.max(9, Math.floor(slideCell * 0.2)) + 'px Courier New';
+            ctx.textAlign = 'center';
+            ctx.fillText('EXIT', ex + slideCell, ey + slideCell * 2 - 8);
+            ctx.restore();
+
+            // Pieces
+            const pad = Math.max(2, slideCell * 0.06);
+            for (let i = 0; i < slidePieces.length; i++) {
+                const p = slidePieces[i];
+                const s = slideSize(p.type);
+                const x = slideBoardX + p.c * slideCell + pad;
+                const y = slideBoardY + p.r * slideCell + pad;
+                const w = s.w * slideCell - pad * 2;
+                const h = s.h * slideCell - pad * 2;
+                const isGoal = p.type === 'goal';
+                const dragging = slideDrag && slideDrag.idx === i;
+                const col = slidePieceColor(p.type);
+                let glow = isGoal ? 22 : 10;
+                if (slideWon && isGoal) glow = 22 + Math.sin(slideWinPulse * 7) * 14;
+                drawSlideRounded(x, y, w, h, col, dragging ? 0.85 : 1, glow);
+
+                // The goal block carries a ring so it stays unmistakable even
+                // on skins whose accent is close to the shifted hues.
+                if (isGoal) {
+                    ctx.save();
+                    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+                    ctx.lineWidth = 2;
+                    const rr = Math.min(w, h) * 0.2;
+                    ctx.beginPath();
+                    ctx.arc(x + w / 2, y + h / 2, rr, 0, Math.PI * 2);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            }
+
+            // HUD: level / moves / par
+            ctx.save();
+            ctx.textAlign = 'center';
+            const hy = slideBoardY - (isPortrait ? 26 : 34);
+            ctx.fillStyle = t.accent;
+            ctx.font = 'bold ' + (isPortrait ? 13 : 15) + 'px Courier New';
+            ctx.fillText('LEVEL ' + (slideLevel + 1) + ' / ' + SLIDE_LEVEL_DATA.length, cw / 2, hy - 16);
+            const best = slideBest[slideLevel];
+            ctx.fillStyle = '#cfe6ff';
+            ctx.font = (isPortrait ? 12 : 14) + 'px Courier New';
+            ctx.fillText('MOVES ' + slideMoves + '   ·   PAR ' + slidePar +
+                         (best !== undefined ? '   ·   BEST ' + best : ''), cw / 2, hy);
+            ctx.restore();
+
+            if (slideWon) slideWinPulse += 0.05;
         }
 
         // Draw score / multiplier in top-left (score-based, no levels)
@@ -4294,6 +4962,19 @@
                 return;
             }
 
+            // SLIDE mode draws its own board and shares none of the block-game
+            // furniture (no queue, hold, undo or game-over check).
+            if (gameMode === 'slide') {
+                drawSlideMode();
+                updateFlames();
+                updateFlood();
+                updateCrystals();
+                updateFireworks();
+                updateCyberFX();
+                requestAnimationFrame(render);
+                return;
+            }
+
             // Auto-detect unplayable state (in case other triggers missed)
             if (!isGameOver) {
                 checkGameOver();
@@ -4476,6 +5157,44 @@
             });
         }
 
+        // Slide has its own board (levels solved, then fewest total moves).
+        function renderSlideLeaderboard() {
+            const listEl = document.getElementById('lb-list');
+            listEl.innerHTML = '<li class="lb-empty">Loading…</li>';
+            if (!sb) { listEl.innerHTML = '<li class="lb-empty">Offline.</li>'; return; }
+            sb.from('slide_scores')
+              .select('display_name,levels_solved,total_moves')
+              .order('levels_solved', { ascending: false })
+              .order('total_moves', { ascending: true })
+              .limit(10)
+              .then(function (r) {
+                  if (r.error) throw r.error;
+                  const rows = r.data || [];
+                  if (!rows.length) {
+                      listEl.innerHTML = '<li class="lb-empty">No Slide scores yet — be the first!</li>';
+                      return;
+                  }
+                  listEl.innerHTML = rows.map(function (e, i) {
+                      return '<li class="lb-row">' +
+                          '<span class="lb-rank">' + (i + 1) + '</span>' +
+                          '<span class="lb-name">' + escapeHtml(e.display_name || 'PLAYER') + '</span>' +
+                          '<span class="lb-score">' + e.levels_solved + ' lv · ' + e.total_moves + ' mv</span>' +
+                          '</li>';
+                  }).join('');
+              }).catch(function () {
+                  listEl.innerHTML = '<li class="lb-empty">Couldn\'t load leaderboard — check your connection.</li>';
+              });
+        }
+
+        let lbTab = 'score';
+        function setLbTab(which) {
+            lbTab = which;
+            document.getElementById('lb-tab-score').classList.toggle('active', which === 'score');
+            document.getElementById('lb-tab-slide').classList.toggle('active', which === 'slide');
+            if (which === 'slide') renderSlideLeaderboard(); else renderLeaderboard();
+        }
+        window.setLbTab = setLbTab;
+
         function openLeaderboard() {
             appScreen = 'home';
             document.getElementById('home-screen').style.display = 'none';
@@ -4485,7 +5204,7 @@
             document.getElementById('ui-layer').style.display = 'none';
             document.getElementById('message').style.display = 'none';
             document.getElementById('leaderboard-panel').style.display = 'flex';
-            renderLeaderboard();
+            setLbTab(lbTab);
         }
 
         function openCredits() {
@@ -4515,6 +5234,8 @@
             document.getElementById('credits-panel').style.display = 'none';
             document.getElementById('achievements-panel').style.display = 'none';
             const vsSetupEl = document.getElementById('versus-setup'); if (vsSetupEl) vsSetupEl.style.display = 'none';
+            const slWin = document.getElementById('slide-win'); if (slWin) slWin.style.display = 'none';
+            if (gameMode === 'slide') gameMode = 'solo';
             if (typeof exitVersusMatch === 'function') exitVersusMatch();
             document.getElementById('pause-menu').style.display = 'none';
             document.getElementById('pause-btn').style.display = 'none';
@@ -4533,6 +5254,8 @@
             if (!hasStartedMusic) startMusic();
 
             exitVersusMatch();                          // ensure solo mode
+            gameMode = 'solo';
+            document.getElementById('slide-win').style.display = 'none';
             document.getElementById('home-screen').style.display = 'none';
             document.getElementById('skins-panel').style.display = 'none';
             document.getElementById('settings-panel').style.display = 'none';
@@ -4834,7 +5557,11 @@
         // board approaches a blackout/whiteout (a solve). No-op on backends
         // without a trigger channel.
         function updateBoardTension() {
-            if (typeof ControllerFX === 'undefined' || !grid || !grid.length) return;
+            if (typeof ControllerFX === 'undefined') return;
+            // SLIDE has no lit/unlit board to measure — release the triggers so
+            // they don't keep the stiffness from whatever solo game ran before.
+            if (gameMode === 'slide') { ControllerFX.setTension(0); return; }
+            if (!grid || !grid.length) return;
             let sum = 0;
             for (let r = 0; r < BOARD_SIZE; r++)
                 for (let c = 0; c < BOARD_SIZE; c++) sum += grid[r][c];
