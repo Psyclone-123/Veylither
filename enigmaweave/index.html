@@ -1470,6 +1470,8 @@
             currentThemeIndex = i;
             applyThemeBackground();
             EWStore.set('ew_skin', THEMES[i].id);
+            // Slide's neon sprites are baked per skin colour.
+            if (typeof slideInvalidateSprites === 'function') slideInvalidateSprites();
         }
         // Restore the last-equipped skin (only if the player still owns it).
         function restoreEquippedSkin() {
@@ -1570,7 +1572,11 @@
             }
             if (n > 0 && sb) {
                 ensureIdentity().then(function (uid) {
-                    if (uid) sb.rpc('mp_add_lifetime_sparks', { p_amount: n }).catch(function () {});
+                    // NB: a Supabase query builder is a thenable, NOT a Promise —
+                    // it has no .catch(), and calling one throws before the
+                    // request is ever issued. Ignore errors via then's second
+                    // argument instead (that's also what fires the request).
+                    if (uid) sb.rpc('mp_add_lifetime_sparks', { p_amount: n }).then(function () {}, function () {});
                 });
             }
         }
@@ -1744,7 +1750,7 @@
                 ensureIdentity().then(function (uid) {
                     if (!uid) return;
                     sb.from('player_achievements').upsert({ profile_id: uid, achievement_id: id }, { onConflict: 'profile_id,achievement_id' })
-                        .catch(function () {});
+                        .then(function () {}, function () {});
                 });
             }
             const ap = document.getElementById('achievements-panel');
@@ -2041,12 +2047,21 @@
             // clip, and a clear clip for whiteout/blackout.
             cyber: makeSfxSet(
                 'Cybersfx/Cyber_place.wav', 'Cybersfx/Cyber_place.wav',
-                'Cybersfx/Hold.wav', 'Cybersfx/Cyber_clear.wav', 0.75)
+                'Cybersfx/Hold.wav', 'Cybersfx/Cyber_clear.wav', 0.75),
+            // Kawaii: the uwu voice clip on both place slots (the pitch shift
+            // varies it) and on hold; clear reuses the default clear.
+            kawaii: makeSfxSet(
+                'Kawaiisfx/uwu.wav', 'Kawaiisfx/uwu.wav',
+                'Kawaiisfx/uwu.wav', 'Zombiesfx/zombie_clear.mp3', 0.8)
         };
+        // If the uwu clip is missing or fails to load, fall back to default
+        // sounds rather than going silent.
+        SFX_SETS.kawaii.place[0].addEventListener('error', () => { SFX_SETS.kawaii.missing = true; });
 
         // Active set follows the current skin; unknown/absent keys use default.
         function currentSfx() {
-            return SFX_SETS[theme().sfx] || SFX_SETS.default;
+            const set = SFX_SETS[theme().sfx];
+            return (set && !set.missing) ? set : SFX_SETS.default;
         }
 
         // PLAY-button stinger: still silent (no file yet).
@@ -2539,7 +2554,7 @@
         }
 
         function cancelVersusSearch() {
-            if (sb) sb.rpc('mp_leave_queue').catch(function () {});
+            if (sb) sb.rpc('mp_leave_queue').then(function () {}, function () {});
             cleanupAssignChannel();
             resetVersusSetupButtons();
             setVersusStatus('');
@@ -2899,7 +2914,7 @@
             isPaused = false;
             document.getElementById('pause-menu').style.display = 'none';
             stopVersusTick();
-            if (sb) sb.rpc('mp_forfeit_match', { p_match_id: id }).catch(function () {});
+            if (sb) sb.rpc('mp_forfeit_match', { p_match_id: id }).then(function () {}, function () {});
             exitVersusMatch();
             showHome();
         }
@@ -2910,10 +2925,12 @@
         window.addEventListener('pagehide', function () {
             if (!sb) return;
             try {
+                // .then() is what actually dispatches the request on a Supabase
+                // builder — without it these never left the page at all.
                 if (gameMode === 'versus' && versusMatchId) {
-                    sb.rpc('mp_forfeit_match', { p_match_id: versusMatchId });
+                    sb.rpc('mp_forfeit_match', { p_match_id: versusMatchId }).then(function () {}, function () {});
                 } else if (versusAssignChannel) {
-                    sb.rpc('mp_leave_queue');
+                    sb.rpc('mp_leave_queue').then(function () {}, function () {});
                 }
             } catch (e) {}
         });
@@ -2977,9 +2994,18 @@
 
         // ==========================================
         // SLIDE MODE — Klotski / sliding-block puzzle
-        // A 4x5 board holding one 2x2 GOAL block, plus 1x1s, vertical 1x2s and
-        // horizontal 2x1s, with exactly two empty cells. Slide pieces around to
-        // walk the goal block down to the exit at the bottom centre.
+        // One 2x2 GOAL block plus 1x1s, vertical 1x2s and horizontal 2x1s, with
+        // a couple of empty cells to shuffle them through. Slide pieces around
+        // to walk the goal block down to the exit at the bottom centre.
+        //
+        // The board GROWS with progress, in three tiers:
+        //   levels   1- 50 : 4x5, no walls      (classic Klotski)
+        //   levels  51-105 : 5x6, 4 walls
+        //   levels 106-160 : 6x7, 10 walls
+        // Walls are immovable blocks. They're not just flavour: a bigger board
+        // has so many piece arrangements that its state graph stops fitting in
+        // memory, and walls cut the mobility back down so the builder can still
+        // enumerate every state and hand out an EXACT par.
         //
         // Levels are pre-generated (see tools/klotski_build.js): each was found
         // by enumerating the full reachable state graph from a solved board and
@@ -2988,92 +3014,99 @@
         // (par), and — critically for the shared leaderboard — level N is
         // identical for every player.
         //
-        // Encoding: 3 chars per piece (type, row, col) then '|' then par.
-        //   G=goal 2x2, S=single 1x1, V=vertical 1x2, H=horizontal 2x1
+        // Encoding: "ROWSxCOLS:" then 3 chars per piece (type, row, col), then
+        // '|' and the par. A level with no size prefix is a 4-wide, 5-tall one.
+        //   G=goal 2x2, S=single 1x1, V=vertical 1x2, H=horizontal 2x1,
+        //   W=wall 1x1 (never moves)
         // ==========================================
-        const SLIDE_ROWS = 5, SLIDE_COLS = 4;
-        const SLIDE_GOAL_R = 3, SLIDE_GOAL_C = 1;   // where the goal block must land
+        // Board dimensions are per-level now: the grid grows as you progress
+        // (see the tiers in tools/klotski_build.js), so these are set by
+        // slideLoadLevel from the level's own "ROWSxCOLS:" prefix rather than
+        // being fixed for the whole mode. The exit is always the bottom-centre
+        // 2x2 of whatever board the level ships with.
+        let slideRows = 5, slideCols = 4;
+        let slideGoalR = 3, slideGoalC = 1;         // where the goal block must land
         const SLIDE_LEVEL_DATA = [
-            'G21V30V23V10V01H02S43S42S00S12|4','G30H02H12H21H10S42S33S01S00S23S43|4',
-            'G32S00S30S03S13V11V31H01S12S40S22S23|4','G21S33S23H02V20V01H12S43S00S42S40|5',
-            'G32V30V13V31V12H00S03S02S11S10|5','G30H00H02H10H12S42S32S21S20S33S43|5',
-            'G32S11S01S22S12V00V13H02S40S21S41S31|5','G32S01S22H11V30V10H02S41S31S23S00|6',
-            'G30V00V32V12V13H02S11S43S21S20|6','G32H10H01H30H20S00S03S41S40S12S13|6',
-            'G30S11S01S13S12V00V32H02S43S22S23S20|6','G21S11S03H00V10V23H12S30S43S40S42|7',
-            'G32V10V02V30V03H21S01S23S00S31|7','G32H01H11H30H21S00S20S41S40S23S03|7',
-            'G21S10S20S11S30V03V23H01S40S41S12S42|7','G20S41S40H00V02V03H10S33S23S43S42|8',
-            'G32V21V03V20V01H22S02S40S12S10|9','G30H11H22H20H32S13S02S00S10S42S43|9',
-            'G32S12S01S03S02V00V31H20S30S40S22S13|9','G21S43S33H11V10V30H00S41S02S42S23|10',
-            'G30V11V33V12V03H00S02S32S42S10|11','G30H10H02H21H32S13S20S12S00S42S43|10',
-            'G30S02S43S23S13V12V32H20S00S01S33S10|10','G20S01S12H02V00V32H22S40S11S41S13|12',
-            'G22V30V03V10V21H01S11S12S43S00|12','G20H02H12H22H10S40S32S01S00S33S41|12',
-            'G22S10S00S12S02V01V03H20S40S41S43S30|11','G20S42S40H01V22V13H10S03S12S00S33|13',
-            'G30V10V23V32V03H11S02S22S43S00|14','G22H00H02H12H20S10S43S30S42S41S11|13',
-            'G30S11S01S03S00V02V13H21S42S33S43S32|13','G22S40S43H02V00V31H12S20S01S30S21|15',
-            'G22V30V03V31V02H00S42S21S20S11|16','G22H30H00H40H12S02S03S43S42S21S11|15',
-            'G22S00S03S42S43V30V21H01S12S41S10S11|14','G20S41S40H02V22V13H00S11S10S12S33|17',
-            'G20V00V32V01V13H02S33S41S22S40|18','G22H02H12H40H10S00S01S43S42S31S21|16',
-            'G11S00S31S03S13V10V23H01S30S41S43S32|16','G22S12S10H01V11V03H40S43S20S42S31|19',
-            'G20V00V32V01V33H22S41S40S02S03|20','G22H00H02H12H40S30S11S43S42S31S21|18',
-            'G20S41S40S00S03V32V13H01S12S11S22S43|17','G21S12S11H01V00V03H42S33S20S23S30|21',
-            'G12V10V32V30V33H02S01S41S11S31|21','G12H00H02H40H30S20S21S43S42S10S11|20',
-            'G12S10S43S00S01V20V11H02S32S40S42S41|19','G20S02S32H00V23V03H42S12S40S11S41|23',
-            'G10V30V33V31V13H02S00S22S01S12|23','G10H22H01H31H12S43S03S00S42S30S41|21',
-            'G20S01S11S23S02V22V33H12S10S00S40S42|20','G10S03S02H00V13V12H31S42S40S33S41|25',
-            'G12V01V32V00V33H02S20S30S31S41|26','G20H22H00H42H12S32S02S11S33S40S41|23',
-            'G12S00S03S33S43V30V32H01S11S31S10S21|22','G21S01S00H10V20V13H41S33S40S43S12|27',
-            'G12V01V32V10V33H02S31S41S00S30|28','G10H00H02H22H32S30S31S13S12S40S43|25',
-            'G10S40S22S30S02V32V03H00S41S31S33S43|24','G11S31S01H02V00V23H42S30S40S20S41|29',
-            'G12V32V11V31V20H02S10S33S01S43|30','G02H10H00H20H22S33S43S32S40S42S41|27',
-            'G21S00S02S13S03V01V33H41S10S12S20S40|25','G21S03S13H11V10V23H42S00S30S02S41|31',
-            'G12V10V32V21V33H02S01S40S30S41|32','G10H12H01H30H40S33S03S00S22S42S43|29',
-            'G12S40S10S00S03V31V33H01S11S20S32S42|27','G11S41S01H02V00V13H32S31S40S20S43|33',
-            'G11V30V03V10V31H00S23S32S02S33|34','G12H02H10H32H41S30S21S31S40S00S01|31',
-            'G00S41S32S30S12V33V13H02S20S21S31S42|29','G11S13S00H01V20V23H31S42S40S03S41|35',
-            'G00V31V12V30V32H02S20S43S21S33|36','G20H10H00H42H40S13S23S03S12S32S33|33',
-            'G02S10S33S11S43V20V32H00S22S40S23S21|31','G02S11S22H31V20V00H41S23S40S33S01|38',
-            'G10V32V13V30V33H01S31S22S03S41|39','G21H02H12H42H10S20S41S30S40S00S01|35',
-            'G10S01S00S23S33V12V03H41S43S30S40S31|32','G12S01S20H42V30V00H32S21S11S41S03|40',
-            'G10V22V03V30V23H00S31S12S02S41|41','G02H10H00H40H31S22S33S23S20S30S43|37',
-            'G22S00S11S01S03V10V21H42S13S12S30S41|34','G02S10S31H32V20V01H40S43S21S42S00|42',
-            'G02V20V22V11V33H00S10S42S23S31|43','G00H12H31H42H40S03S33S02S23S20S22|39',
-            'G02S10S23S11S33V31V22H00S21S40S20S43|36','G30S13S23H02V00V01H42S33S12S22S20|44',
-            'G11V00V32V30V23H02S01S31S43S41|46','G02H10H00H32H42S20S31S30S40S21S22|41',
-            'G21S00S01S02S03V10V30H42S41S33S11S23|38','G02S11S10H00V20V22H40S43S31S23S21|47',
-            'G01V30V03V31V22H20S10S23S00S33|48','G12H00H32H42H40S11S03S10S02S21S31|43',
-            'G02S10S20S00S01V30V21H32S43S41S42S23|40','G02S11S10H00V20V22H40S43S33S42S31|49',
-            'G12V10V01V30V32H02S33S21S43S41|50','G01H22H32H30H40S13S43S03S42S00S20|45',
-            'G30S02S22S11S03V10V13H42S33S32S00S01|42','G32S22S00H30V10V11H40S01S02S23S13|52',
-            'G01V20V03V31V33H22S21S42S00S32|53','G22H00H02H10H41S30S12S20S21S40S31|47',
-            'G01S23S00S13S22V10V21H32S41S40S42S30|44','G02S40S00H31V11V33H41S22S10S23S01|54',
-            'G11V31V13V00V32H01S20S33S03S30|55','G10H02H12H42H30S22S41S01S00S32S23|49',
-            'G01S20S03S00S33V30V13H31S43S21S22S42|46','G02S21S10H30V01V23H41S32S20S22S00|56',
-            'G01V00V13V31V33H21S42S40S03S20|58','G22H01H30H42H40S10S13S00S12S20S21|51',
-            'G01S20S10S00S03V21V13H42S22S33S30S41|48','G00S12S02H22V20V03H32S43S42S41S21|59',
-            'G10V12V03V32V23H01S43S41S31S30|60','G12H02H20H42H30S00S01S11S32S40S10|54',
-            'G02S00S22S32S21V01V23H30S20S41S40S43|50','G02S00S10H30V01V23H41S43S21S32S40|61',
-            'G11V00V03V30V31H32S23S42S01S43|63','G02H30H20H42H40S11S01S22S32S10S33|56',
-            'G00S21S22S20S03V02V13H31S43S30S40S33|52','G11S00S02H31V20V03H40S43S23S42S33|64',
-            'G11V00V03V20V33H31S42S41S02S40|65','G22H20H01H41H30S13S03S12S43S40S10|58',
-            'G02S10S32S22S21V01V23H40S43S42S30S31|54','G01S00S03H21V10V13H41S43S31S40S30|66',
-            'G01V30V13V22V33H20S10S31S00S42|68','G20H01H11H22H42S40S13S32S03S00S10|60',
-            'G02S23S41S32S42V10V01H21S40S30S43S00|56','G01S30S20H21V00V03H31S42S23S33S41|69',
-            'G00V30V02V31V03H21S42S43S20S32|70','G22H20H10H41H30S13S03S00S43S40S01|63',
-            'G02S31S01S11S00V22V33H20S10S40S23S42|58','G12S00S21H30V01V33H41S10S20S02S32|72',
-            'G01V30V03V32V33H22S10S21S00S31|73','G20H01H12H22H42S10S41S11S00S32S03|65',
-            'G02S22S30S40S11V00V23H20S42S32S31S43|60','G12S10S02H20V30V33H31S42S03S11S41|74',
-            'G01V00V33V20V31H21S13S32S03S23|76','G12H30H20H41H32S03S02S00S43S40S11|67',
-            'G01S23S43S33S13V31V32H21S03S30S00S10|62','G00S41S31H22V20V02H32S42S03S43S40|77',
-            'G01V00V22V30V31H20S33S43S13S42|78','G12H30H20H41H32S03S01S10S43S40S00|69',
-            'G20S10S00S43S41V01V03H22S42S32S40S33|64','G02S32S23H21V01V33H30S00S41S42S40|79',
-            'G02V01V33V30V22H20S41S00S23S42|81','G10H22H32H30H41S02S40S13S12S43S03|72',
-            'G01S22S43S33S23V31V32H20S13S30S00S10|66','G00S30S20H22V21V03H32S42S12S43S41|82',
-            'G02V01V32V10V21H22S40S30S43S41|84','G02H30H20H41H22S01S00S10S43S40S11|74',
-            'G01S33S42S43S13V31V22H20S03S40S00S10|68','G00S43S23H20V31V32H12S02S33S03S30|85',
-            'G00V31V02V32V13H20S33S43S40S03|86','G00H22H31H20H41S02S40S13S12S33S03|76',
-            'G12S01S03S02S00V32V33H10S21S30S31S41|70','G02S40S20H22V21V32H10S30S01S43S00|87',
-            'G02V01V32V10V21H22S40S00S43S41|89','G00H20H32H30H41S02S40S22S12S43S23|79',
-            'G10S00S03S01S02V30V32H12S23S43S33S22|72','G00S42S33H20V31V22H12S02S43S03S40|90'
+            '5x4:G32V00V11H02H12H22S01S30S40S41|4', '5x4:G32V03V30V31H00S02S10S11S12S22S23|5',
+            '5x4:G30V00V03V11V23S01S12S20S22S42S43|5', '5x4:G32V03V10V31H11H21S00S02S23S40|6',
+            '5x4:G30V00V13V22V33H01S11S12S20S42|7', '5x4:G30V03V33H00H10H22S02S20S32S42|8',
+            '5x4:G32V10V21V30H00S02S03S12S13S22S41|9', '5x4:G32V00V11V13V20S01S12S22S31S40S41|9',
+            '5x4:G32V00V13V31H02H11S21S22S30S40|10', '5x4:G32V01V02V30V31H20S00S10S13S22|11',
+            '5x4:G32V20V21H01H10H22S03S12S13S41|12', '5x4:G20V03V22V23H10S00S01S02S40S41S42|13',
+            '5x4:G22V00V03V11V31S02S12S20S40S42S43|14', '5x4:G30V10V22V23H01H11S00S03S21S42|15',
+            '5x4:G11V03V10V30V32H00S02S23S31S41|16', '5x4:G22V00V11H01H12H30S40S41S42S43|17',
+            '5x4:G11V10V23V30H02S01S13S31S32S41S43|18', '5x4:G21V00V02V20V23S03S11S13S40S41S42|19',
+            '5x4:G32V02V20V21H00H22S10S13S40S41|20', '5x4:G11V00V13V30V32H01S03S31S33S41|21',
+            '5x4:G12V10V11H00H30H40S02S03S32S42|22', '5x4:G12V21V32V33H02S00S01S11S20S30S41|23',
+            '5x4:G12V00V01V20V32S02S03S21S33S41S43|24', '5x4:G30V03V22V33H00H10S12S20S23S42|25',
+            '5x4:G10V22V23V30V31H01S03S12S42S43|26', '5x4:G21V03V20H00H11H42S10S23S33S40|28',
+            '5x4:G12V01V30V33H02S00S10S20S31S32S41|29', '5x4:G10V02V03V31V32S00S01S22S23S33S43|30',
+            '5x4:G11V00V13V20H02H31S01S33S41S43|31', '5x4:G02V20V22V31V33H00S10S11S40S42|32',
+            '5x4:G20V00V23H01H11H41S13S22S32S40|33', '5x4:G22V00V11V30H12S02S20S31S41S42S43|34',
+            '5x4:G00V20V21V22V23S02S12S13S40S41S42|35', '5x4:G11V10V13V30H01H31S00S33S42S43|36',
+            '5x4:G02V11V22V31V33H00S10S20S23S42|38', '5x4:G10V02V03H00H40H42S23S30S32S33|39',
+            '5x4:G30V02V10V23H42S00S01S03S13S21S32|40', '5x4:G11V00V23V30V31S01S02S13S20S42S43|41',
+            '5x4:G12V20V21V33H00H02S11S40S41S42|42', '5x4:G00V12V20V31V33H02S21S23S32S40|43',
+            '5x4:G32V20V21H00H12H40S02S11S22S23|44', '5x4:G02V00V21V22H41S01S11S23S30S40S43|46',
+            '5x4:G01V03V10V21V32S00S22S23S30S41S43|47', '5x4:G32V03V20V21H10H40S01S02S22S23|48',
+            '5x4:G01V00V31V32V33H21S03S23S30S40|49', '5x4:G11V10V13H00H02H31S30S33S41S43|50',
+            '5x4:G02V01V21V33H41S00S10S22S23S30S32|51', '5x4:G10V03V12V30V32S01S02S23S33S41S43|53',
+            '5x4:G20V00V22V23H12H40S01S02S03S43|54', '5x4:G11V10V23V31V32H01S13S30S40S43|55',
+            '6x5:G43V20V21V41H02H13S00S12S22S24S34S40S42S50S52W04W10W11W33|20', '6x5:G32V31H01H03H51S00S11S12S20S22S30S34S40S44S50S54W10W13W21W23|21',
+            '6x5:G40V23H42S00S01S02S03S10S12S14S20S21S24S30S34S44S53S54W04W11W13W32|22', '6x5:G30V10V11V22V23V43H03H12H51S34S42S50W00W01W14W24|23',
+            '6x5:G43V00V11V24V42H03H22S20S30S32S33S40S41S50W02W12W14W31|24', '6x5:G43V13V22V41H02H20S00S14S24S30S31S34S42S50S52W04W10W11W33|25',
+            '6x5:G43V31H01H11H50S00S03S04S20S22S30S32S33S34S40S42W10W13W21W23|26', '6x5:G30V14H53S00S01S02S10S12S20S22S23S33S34S42S44S50S51S52W04W11W13W32|27',
+            '6x5:G30V02V10V11V23V32H03H43H52S50S51S54W00W01W14W24|28', '6x5:G43V13V24V32V41H03H20S00S01S11S30S33S40S50W02W12W14W31|29',
+            '6x5:G20V40V41V42H01H12S00S14S22S23S24S32S34S43S53W04W10W11W33|30', '6x5:G33V04H02H11H53S01S20S22S24S30S31S32S40S42S51S52W10W13W21W23|31',
+            '6x5:G30V34H51S02S03S10S12S14S20S22S23S24S33S42S43S50S53S54W04W11W13W32|32', '6x5:G32V10V11V12V13V34H03H50H53S02S40S52W00W01W14W24|34',
+            '6x5:G23V01V30V42V44H03H21S00S10S13S20S41S43S50W02W12W14W31|35', '6x5:G43V13V22V24H01H50S00S12S20S30S31S40S41S42S52W04W10W11W33|36',
+            '6x5:G33V31H01H03H52S00S11S12S14S20S22S30S40S42S51S54W10W13W21W23|37', '6x5:G30V23H43S01S02S03S10S12S14S20S21S22S34S42S51S52S53S54W04W11W13W32|39',
+            '6x5:G42V02V10V11V40V41H03H22H31S13S30S44W00W01W14W24|40', '6x5:G43V13V20V40V41H03H21S01S10S11S32S33S34S52W02W12W14W31|41',
+            '6x5:G20V22V40V43H02H13S01S12S23S24S34S42S44S52S54W04W10W11W33|42', '6x5:G33V42H01H03H31S00S11S12S20S22S24S40S41S51S53S54W10W13W21W23|44',
+            '6x5:G20V23H53S00S01S02S03S12S14S22S24S34S40S41S42S43S44S52W04W11W13W32|45', '6x5:G20V12V13V32V41V44H03H10H52S33S43S50W00W01W14W24|46',
+            '6x5:G32V01V13V20V24H03H21S00S10S40S44S50S51S52W02W12W14W31|48', '6x5:G43V22V30V42H02H50S01S12S14S20S23S24S31S34S41W04W10W11W33|49',
+            '6x5:G30V12H01H03H50S00S14S32S33S34S42S43S44S52S53S54W10W13W21W23|50', '6x5:G30V23H43S00S01S03S10S14S20S21S24S34S42S50S51S52S53S54W04W11W13W32|52',
+            '6x5:G21V02V30V34V41V42H03H10H53S13S20S23W00W01W14W24|53', '6x5:G43V10V11V30V42H03H32S00S13S23S24S34S41S51W02W12W14W31|54',
+            '6x5:G21V24V42V43H02H12S00S14S23S30S41S44S50S51S54W04W10W11W33|56', '6x5:G33V40H01H03H30S00S12S14S22S32S41S42S51S52S53S54W10W13W21W23|57',
+            '6x5:G20V24H42S00S01S02S12S14S23S33S40S41S44S50S51S52S53S54W04W11W13W32|58', '6x5:G33V10V21V22V40V41H02H12H53S23S42S52W00W01W14W24|60',
+            '6x5:G32V13V20V24V44H03H10S00S01S22S40S50S51S53W02W12W14W31|61', '6x5:G20V22V34V42H02H23S01S13S14S41S43S50S51S53S54W04W10W11W33|63',
+            '6x5:G30V42H01H11H32S00S03S04S14S24S34S44S50S51S53S54W10W13W21W23|64', '6x5:G40V14H33S00S10S12S20S21S22S23S30S31S42S43S44S52S53S54W04W11W13W32|64',
+            '6x5:G33V10V13V31V32V40H03H21H52S02S12S30W00W01W14W24|67', '6x5:G32V13V24V30V44H03H20S10S11S22S41S51S52S53W02W12W14W31|68',
+            '6x5:G21V41V42V44H01H13S00S20S24S30S34S40S43S50S53W04W10W11W33|70', '6x5:G30V42H02H11H32S01S04S14S24S34S43S44S50S51S53S54W10W13W21W23|68',
+            '6x5:G40V14H33S00S01S10S20S21S22S23S30S31S42S43S44S52S53S54W04W11W13W32|64', '6x5:G12V10V11V33V34V40H03H41H52S30S31S51W00W01W14W24|74',
+            '6x5:G33V10V11V22V30H03H23S01S13S41S50S51S52S53W02W12W14W31|75', '6x5:G20V22V24V42H02H12S01S14S23S41S43S44S50S51S54W04W10W11W33|75',
+            '6x5:G30V42H02H11H32S00S04S14S24S34S43S44S50S51S53S54W10W13W21W23|67', '6x5:G40V14H33S00S01S10S12S20S21S22S30S31S42S43S44S52S53S54W04W11W13W32|64',
+            '6x5:G12V20V21V32V40V41H02H43H53S10S11S33W00W01W14W24|81', '6x5:G43V00V11V20V32H03H33S01S23S40S41S50S51S52W02W12W14W31|83',
+            '6x5:G30V12V24V44H02H13S01S20S21S32S42S43S51S52S53W04W10W11W33|75', '6x5:G30V42H01H11H32S00S04S14S24S34S43S44S50S51S53S54W10W13W21W23|66',
+            '6x5:G40V14H33S01S10S12S20S21S22S23S30S31S42S43S44S52S53S54W04W11W13W32|63', '6x5:G12V10V21V33V34V40H03H41H53S32S51S52W00W01W14W24|89',
+            '6x5:G43V00V11V32V40H03H22S01S13S20S30S33S34S41W02W12W14W31|90', '7x6:G50V03V04V43H24H31H41H62S05S12S21S34S35S44S52S54S55S64S65W00W01W02W10W11W15W23W30W33W45|32',
+            '7x6:G53V03V12V23V24V25V30H20H50S05S32S41S45S52S55S61S62S65W00W01W02W04W10W11W31W42W43W44|33', '7x6:G50V30V45H03H33H53H62H64S00S01S05S12S15S23S24S31S32S35S52W02W10W11W14W20W21W22W41W42W43|34',
+            '7x6:G23V11V42V44S04S05S10S13S15S22S30S32S35S50S51S53S55S60S61S62S63S64S65W00W02W03W12W14W20W25W31W40W45|35', '7x6:G54V11V35V41V50H01H30S03S15S20S22S23S24S33S34S42S52S61S62S63W00W05W10W12W13W14W25W32W40W43|36',
+            '7x6:G50V03V04V31H21H24H43H63S05S12S20S35S40S42S53S54S55S62S65W00W01W02W10W11W15W23W30W33W45|38', '7x6:G54V03V05V12V23V24V51H20H52S14S25S32S35S40S45S50S60S63W00W01W02W04W10W11W31W42W43W44|39',
+            '7x6:G50V05V30H03H31H53H62H64S00S01S13S23S24S25S33S35S44S52S55W02W10W11W14W20W21W22W41W42W43|40', '7x6:G32V11V24V50S04S05S10S15S22S23S30S35S41S44S52S53S54S55S61S62S63S64S65W00W02W03W12W14W20W25W31W40W45|42',
+            '7x6:G53V31V34V50V52H01H20S03S11S15S22S23S24S30S35S42S45S51S55S61W00W05W10W12W13W14W25W32W40W43|43', '7x6:G50V03V04V31H21H34H52H62S05S12S20S32S42S43S44S54S55S64S65W00W01W02W10W11W15W23W30W33W45|45',
+            '7x6:G53V05V12V23V24V25V50H20H51S14S30S32S40S41S45S55S62S65W00W01W02W04W10W11W31W42W43W44|46', '7x6:G50V23V30H03H31H53H62H64S00S01S05S13S15S24S25S34S35S52S55W02W10W11W14W20W21W22W41W42W43|48',
+            '7x6:G22V11V24V44S04S05S10S13S15S30S35S41S42S43S50S51S52S53S61S62S63S64S65W00W02W03W12W14W20W25W31W40W45|49', '7x6:G44V01V24V51V52H02H30S04S15S20S21S22S33S35S42S50S53S60S63S64W00W05W10W12W13W14W25W32W40W43|51',
+            '7x6:G40V03V04V52H24H31H43H64S05S12S21S34S35S53S54S55S60S61S63W00W01W02W10W11W15W23W30W33W45|52', '7x6:G53V03V15V22V24V35V41H20H60S05S14S23S30S40S50S52S55S65W00W01W02W04W10W11W31W42W43W44|54',
+            '7x6:G50V05V30H03H31H52H54H62S00S01S12S13S24S25S33S34S35S44S65W02W10W11W14W20W21W22W41W42W43|55', '7x6:G22V01V24V54S04S05S10S13S15S21S30S41S42S43S44S50S51S52S53S61S62S63S65W00W02W03W12W14W20W25W31W40W45|57',
+            '7x6:G54V01V24V41V52H02H30S04S15S20S23S33S35S42S44S45S50S60S61S63W00W05W10W12W13W14W25W32W40W43|58', '7x6:G40V03V04V52H24H31H42H60S05S21S22S34S44S53S54S55S63S64S65W00W01W02W10W11W15W23W30W33W45|60',
+            '7x6:G53V05V13V22V24V25V41H20H61S12S30S33S40S45S52S55S60S65W00W01W02W04W10W11W31W42W43W44|62', '7x6:G51V24V50H03H30H44H53H63S00S01S05S12S13S23S25S32S33S35S55W02W10W11W14W20W21W22W41W42W43|63',
+            '7x6:G22V01V24V54S04S05S10S13S15S21S30S41S42S43S44S50S51S52S53S55S61S62S63W00W02W03W12W14W20W25W31W40W45|56', '7x6:G54V23V41V50V52H02H30S01S04S11S15S20S21S22S35S44S45S53S61S63W00W05W10W12W13W14W25W32W40W43|67',
+            '7x6:G50V03V04V31H21H24H42H54S05S12S20S34S35S44S52S53S63S64S65W00W01W02W10W11W15W23W30W33W45|68', '7x6:G53V03V14V15V23V35V41H21H60S05S30S32S34S40S50S55S62S65W00W01W02W04W10W11W31W42W43W44|70',
+            '7x6:G50V23V30H04H31H52H54H62S00S01S03S12S15S24S25S34S35S45S64W02W10W11W14W20W21W22W41W42W43|72', '7x6:G22V01V24V54S04S05S10S13S15S21S30S41S42S43S44S50S51S52S53S60S62S63S65W00W02W03W12W14W20W25W31W40W45|56',
+            '7x6:G54V24V41V50V52H02H30S04S11S15S20S22S23S33S35S44S45S53S61S63W00W05W10W12W13W14W25W32W40W43|75', '7x6:G50V03V04V31H21H24H42H54S05S12S20S34S35S44S52S53S62S63S64W00W01W02W10W11W15W23W30W33W45|69',
+            '7x6:G53V03V14V15V23V35V41H21H60S05S20S30S32S34S40S55S62S65W00W01W02W04W10W11W31W42W43W44|73', '7x6:G51V23V40H03H30H44H54H64S00S01S05S12S13S15S24S25S32S34S63W02W10W11W14W20W21W22W41W42W43|80',
+            '7x6:G22V01V24V54S04S05S10S13S15S21S30S41S42S43S44S51S52S53S60S61S62S63S65W00W02W03W12W14W20W25W31W40W45|56', '7x6:G53V01V31V34V42H02H20S04S15S23S24S33S35S45S50S51S60S61S62S65W00W05W10W12W13W14W25W32W40W43|84',
+            '7x6:G50V03V04V31H21H24H42H54S05S12S20S34S35S44S52S53S62S63S65W00W01W02W10W11W15W23W30W33W45|68', '7x6:G53V03V14V15V23V35V41H21H60S05S20S30S32S34S50S55S62S65W00W01W02W04W10W11W31W42W43W44|72',
+            '7x6:G51V23V50H03H30H44H54H63S00S01S05S12S13S15S24S25S32S35S65W02W10W11W14W20W21W22W41W42W43|85', '7x6:G22V01V24V51S04S05S10S13S15S21S30S41S42S43S44S52S53S54S55S60S62S63S64W00W02W03W12W14W20W25W31W40W45|56',
+            '7x6:G53V31V34V42V50H02H21S01S04S11S15S23S24S33S45S51S55S61S62S65W00W05W10W12W13W14W25W32W40W43|90', '7x6:G50V03V04V31H21H24H42H54S05S12S20S34S35S44S52S53S62S64S65W00W01W02W10W11W15W23W30W33W45|67',
+            '7x6:G53V03V14V15V23V35V41H21H60S05S20S30S32S34S40S52S55S65W00W01W02W04W10W11W31W42W43W44|72', '7x6:G51V23V50H03H30H44H54H63S00S01S05S12S13S15S24S25S32S34S65W02W10W11W14W20W21W22W41W42W43|84',
+            '7x6:G22V01V24V54S04S05S10S13S15S21S30S41S42S43S44S50S51S52S53S55S60S62S63W00W02W03W12W14W20W25W31W40W45|55', '7x6:G53V31V34V42V50H02H20S01S04S11S15S23S24S33S45S51S55S61S62S65W00W05W10W12W13W14W25W32W40W43|89',
+            '7x6:G50V03V04V31H21H24H42H54S05S12S20S34S35S44S53S62S63S64S65W00W01W02W10W11W15W23W30W33W45|67', '7x6:G53V03V14V15V23V35V40H21H61S05S20S30S32S34S52S55S60S65W00W01W02W04W10W11W31W42W43W44|72',
+            '7x6:G51V23V50H03H30H44H53H63S00S01S05S12S13S15S24S25S32S35S65W02W10W11W14W20W21W22W41W42W43|84', '7x6:G22V01V24V54S04S05S10S13S15S21S30S41S42S43S44S50S51S52S53S60S61S63S65W00W02W03W12W14W20W25W31W40W45|55',
+            '7x6:G53V31V34V42V50H02H21S01S04S11S15S23S24S33S35S51S55S61S62S65W00W05W10W12W13W14W25W32W40W43|89', '7x6:G50V03V04V31H21H24H42H54S05S12S20S34S35S44S52S62S63S64S65W00W01W02W10W11W15W23W30W33W45|66',
+            '7x6:G53V03V14V15V23V35V40H21H61S05S20S30S32S34S51S55S60S65W00W01W02W04W10W11W31W42W43W44|71', '7x6:G51V23V40H03H30H44H54H63S00S01S05S12S13S15S24S25S32S35S65W02W10W11W14W20W21W22W41W42W43|84',
+            '7x6:G22V01V24V51S04S05S10S13S15S21S30S41S42S43S44S52S53S54S60S62S63S64S65W00W02W03W12W14W20W25W31W40W45|55', '7x6:G53V31V34V42V50H02H20S01S04S11S15S22S23S24S45S51S55S61S62S65W00W05W10W12W13W14W25W32W40W43|89'
         ];
 
         // ===== SKIN -> PIECE COLOURS =====
@@ -3118,6 +3151,7 @@
         function slidePieceColor(type) {
             const t = theme();
             if (type === 'goal') return t.accent;
+            if (type === 'w') return '#4a4b60';      // unlit glass (walls don't glow)
             const base = hexToHsl(t.accent);
             // Floor the saturation/lightness so very dark or washed-out skin
             // accents still yield readable, distinct blocks.
@@ -3126,8 +3160,12 @@
             return hslToHex(base.h + SLIDE_HUE_SHIFT[type], s, l);
         }
 
-        const SLIDE_SIZES = { goal: { w: 2, h: 2 }, s: { w: 1, h: 1 }, v: { w: 1, h: 2 }, h: { w: 2, h: 1 } };
-        const SLIDE_TYPE_OF = { G: 'goal', S: 's', V: 'v', H: 'h' };
+        const SLIDE_SIZES = { goal: { w: 2, h: 2 }, s: { w: 1, h: 1 }, v: { w: 1, h: 2 }, h: { w: 2, h: 1 }, w: { w: 1, h: 1 } };
+        const SLIDE_TYPE_OF = { G: 'goal', S: 's', V: 'v', H: 'h', W: 'w' };
+        // 'w' = wall: occupies its cell but can never be dragged. Walls are what
+        // keep the bigger boards from turning into a free-for-all (and what let
+        // the level builder still compute an exact par on them).
+        const slideIsWall = p => p.type === 'w';
         const slideSize = t => SLIDE_SIZES[t] || SLIDE_SIZES.s;
 
         let slideLevel = 0;            // current level index
@@ -3138,9 +3176,14 @@
         let slideDrag = null;          // {idx, startX, startY, origR, origC, axis}
         let slideWinPulse = 0;
 
-        const LS_SLIDE_PROGRESS = 'ew_slide_progress';   // highest level unlocked
-        const LS_SLIDE_BEST = 'ew_slide_best';           // { levelIdx: bestMoves }
-        const LS_SLIDE_SOLVED = 'ew_slide_solved';       // total distinct levels solved
+        // _v2 keys: the level table was regenerated when Slide gained its
+        // growing board tiers, so level N is a different puzzle than it was.
+        // Old bests would be meaningless against the new pars (and would skew
+        // the shared leaderboard), so progress starts fresh rather than being
+        // migrated onto puzzles nobody actually solved.
+        const LS_SLIDE_PROGRESS = 'ew_slide_progress_v2';   // highest level unlocked
+        const LS_SLIDE_BEST = 'ew_slide_best_v2';           // { levelIdx: bestMoves }
+        const LS_SLIDE_SOLVED = 'ew_slide_solved_v2';       // total distinct levels solved
 
         function slideLoadBest() {
             try { return JSON.parse(EWStore.get(LS_SLIDE_BEST)) || {}; } catch (e) { return {}; }
@@ -3156,29 +3199,40 @@
             return Object.keys(slideBest).reduce(function (a, k) { return a + slideBest[k]; }, 0);
         }
 
+        // "ROWSxCOLS:" prefix is optional — a level without one is a 5x4 board,
+        // which is what every level shipped with before Slide grew its bigger
+        // tiers.
         function slideDecode(str) {
             const bar = str.indexOf('|');
-            const body = str.slice(0, bar);
+            let body = str.slice(0, bar);
             const par = parseInt(str.slice(bar + 1), 10);
+            let rows = 5, cols = 4;
+            const colon = body.indexOf(':');
+            if (colon > 0) {
+                const dims = body.slice(0, colon).split('x');
+                rows = parseInt(dims[0], 10) || 5;
+                cols = parseInt(dims[1], 10) || 4;
+                body = body.slice(colon + 1);
+            }
             const pieces = [];
             for (let i = 0; i + 2 < body.length + 1; i += 3) {
                 pieces.push({ type: SLIDE_TYPE_OF[body[i]], r: +body[i + 1], c: +body[i + 2] });
             }
-            return { pieces: pieces, par: par };
+            return { pieces: pieces, par: par, rows: rows, cols: cols };
         }
 
         // Occupancy grid of piece indices (-1 empty). `ignore` leaves one piece
         // out, which is what makes "can this piece move here" checks work.
         function slideGrid(ignore) {
             const g = [];
-            for (let r = 0; r < SLIDE_ROWS; r++) g.push(new Array(SLIDE_COLS).fill(-1));
+            for (let r = 0; r < slideRows; r++) g.push(new Array(slideCols).fill(-1));
             for (let i = 0; i < slidePieces.length; i++) {
                 if (i === ignore) continue;
                 const p = slidePieces[i], s = slideSize(p.type);
                 for (let dr = 0; dr < s.h; dr++)
                     for (let dc = 0; dc < s.w; dc++) {
                         const rr = p.r + dr, cc = p.c + dc;
-                        if (rr >= 0 && rr < SLIDE_ROWS && cc >= 0 && cc < SLIDE_COLS) g[rr][cc] = i;
+                        if (rr >= 0 && rr < slideRows && cc >= 0 && cc < slideCols) g[rr][cc] = i;
                     }
             }
             return g;
@@ -3186,7 +3240,7 @@
 
         function slideCanPlace(idx, nr, nc) {
             const p = slidePieces[idx], s = slideSize(p.type);
-            if (nr < 0 || nc < 0 || nr + s.h > SLIDE_ROWS || nc + s.w > SLIDE_COLS) return false;
+            if (nr < 0 || nc < 0 || nr + s.h > slideRows || nc + s.w > slideCols) return false;
             const g = slideGrid(idx);
             for (let dr = 0; dr < s.h; dr++)
                 for (let dc = 0; dc < s.w; dc++)
@@ -3209,20 +3263,32 @@
             if (!slideCell) return -1;
             const c = Math.floor((x - slideBoardX) / slideCell);
             const r = Math.floor((y - slideBoardY) / slideCell);
-            if (r < 0 || r >= SLIDE_ROWS || c < 0 || c >= SLIDE_COLS) return -1;
+            if (r < 0 || r >= slideRows || c < 0 || c >= slideCols) return -1;
             return slideGrid(-1)[r][c];
         }
 
         function slideIsWon() {
             const g = slidePieces.find(function (p) { return p.type === 'goal'; });
-            return !!g && g.r === SLIDE_GOAL_R && g.c === SLIDE_GOAL_C;
+            return !!g && g.r === slideGoalR && g.c === slideGoalC;
         }
 
         function slideLoadLevel(idx) {
             slideLevel = Math.max(0, Math.min(SLIDE_LEVEL_DATA.length - 1, idx));
             const d = slideDecode(SLIDE_LEVEL_DATA[slideLevel]);
+            // Compare against the OUTGOING level before overwriting it, so the
+            // board-grew / first-walls callouts fire exactly once.
+            const grew = (d.cols !== slideCols || d.rows !== slideRows);
+            const newWalls = d.pieces.some(slideIsWall) && !slidePieces.some(slideIsWall);
             slidePieces = d.pieces;
             slidePar = d.par;
+            // Board size is per-level, so re-derive the exit and re-fit the
+            // board before anything draws or hit-tests against it.
+            slideRows = d.rows;
+            slideCols = d.cols;
+            slideGoalR = slideRows - 2;
+            slideGoalC = Math.floor((slideCols - 2) / 2);
+            slideInvalidateSprites();          // cell size may have changed
+            if (cw && ch) slideLayout();
             slideMoves = 0;
             slideWon = false;
             slideDrag = null;
@@ -3231,6 +3297,10 @@
             // The win panel hides the pause button — bring it back for the new level.
             if (gameMode === 'slide' && appScreen === 'playing') {
                 document.getElementById('pause-btn').style.display = 'flex';
+                // Call out the two things that change mid-run, so a bigger
+                // board or a bolted-down block never reads as a bug.
+                if (newWalls) showMessage('Dark blocks are bolted down — plan around them');
+                else if (grew) showMessage('Bigger board: ' + slideCols + ' × ' + slideRows);
             }
             updateBoardTension();
         }
@@ -3321,7 +3391,7 @@
                     display_name: displayName,
                     levels_solved: slideSolvedCount(),
                     total_moves: slideTotalMoves()
-                }, { onConflict: 'profile_id' }).catch(function () {});
+                }, { onConflict: 'profile_id' }).then(function () {}, function () {});
             });
         }
 
@@ -3330,6 +3400,7 @@
             if (slideWon) return;
             const idx = slideHitTest(pos.x, pos.y);
             if (idx < 0) return;
+            if (slideIsWall(slidePieces[idx])) { haptic(HAPTICS.invalid); return; }   // walls are bolted down
             initAudio();
             slideDrag = {
                 idx: idx, startX: pos.x, startY: pos.y,
@@ -3822,6 +3893,9 @@
             const ui = document.getElementById('ui-layer');
             if (!ui) return;
             if (appScreen !== 'playing') { ui.style.display = 'none'; return; }
+            // Slide draws its own level/moves/par header where the MORPHED
+            // wordmark sits, so the wordmark stands down for that mode.
+            if (gameMode === 'slide') { ui.style.display = 'none'; return; }
             ui.style.display = isPortrait ? 'none' : 'flex';
         }
         window.addEventListener('resize', function () { resizeGame(); updateChromeVisibility(); });
@@ -4029,95 +4103,283 @@
         function slideLayout() {
             const topPad = isPortrait ? 74 : 96;
             const botPad = isPortrait ? 58 : 64;
-            const availW = cw * (isPortrait ? 0.92 : 0.6);
+            // Wider allowance on desktop than the old 4-wide-only layout used,
+            // so the bigger boards still fill the screen instead of shrinking.
+            const availW = cw * (isPortrait ? 0.94 : 0.74);
             const availH = ch - topPad - botPad;
-            slideCell = Math.max(28, Math.floor(Math.min(availW / SLIDE_COLS, availH / SLIDE_ROWS)));
-            const w = slideCell * SLIDE_COLS, h = slideCell * SLIDE_ROWS;
+            const cell = Math.max(24, Math.floor(Math.min(availW / slideCols, availH / slideRows)));
+            if (cell !== slideCell) slideInvalidateSprites();   // sprites are cell-size specific
+            slideCell = cell;
+            const w = slideCell * slideCols, h = slideCell * slideRows;
             slideBoardX = Math.round(cw / 2 - w / 2);
             slideBoardY = Math.round(topPad + (availH - h) / 2);
         }
 
-        function drawSlideRounded(x, y, w, h, color, alpha, glow) {
+        // Rounded-rect path helper (shared by the neon sprite passes).
+        function slideRoundPath(c2d, x, y, w, h, r) {
+            r = Math.min(r, w / 2, h / 2);
+            c2d.beginPath();
+            c2d.moveTo(x + r, y);
+            c2d.arcTo(x + w, y, x + w, y + h, r);
+            c2d.arcTo(x + w, y + h, x, y + h, r);
+            c2d.arcTo(x, y + h, x, y, r);
+            c2d.arcTo(x, y, x + w, y, r);
+            c2d.closePath();
+        }
+
+        // ===== NEON SIGN BLOCKS =====
+        // Every Slide block is drawn like a real neon sign: a dark smoked-glass
+        // backing panel, a glass tube bent around the block's outline that
+        // glows in the piece colour, and a white-hot core running down the
+        // middle of the tube. Walls are the same tube UNLIT — dead grey glass,
+        // no glow — so they read instantly as "this one doesn't move".
+        //
+        // shadowBlur is far too expensive to run per piece per frame on mobile,
+        // and blocks only ever move in whole cells, so each distinct
+        // (size, colour, kind, cell-size) combination is rendered once into an
+        // offscreen canvas and then just blitted. The cache is cleared whenever
+        // the cell size or skin changes (slideInvalidateSprites).
+        const slideSprites = new Map();
+        function slideInvalidateSprites() { slideSprites.clear(); }
+
+        function slideNeonSprite(w, h, color, kind) {
+            const key = w + 'x' + h + '|' + color + '|' + kind + '|' + Math.round(slideCell);
+            const hit = slideSprites.get(key);
+            if (hit) return hit;
+
+            const pad = Math.ceil(Math.max(6, slideCell * 0.5));   // room for the glow
+            const cvs = document.createElement('canvas');
+            cvs.width = Math.ceil(w + pad * 2);
+            cvs.height = Math.ceil(h + pad * 2);
+            const g = cvs.getContext('2d');
+            const lit = kind !== 'wall';
+            const radius = Math.min(w, h) * 0.17;
+            const inset = Math.max(3, slideCell * 0.15);           // tube offset from the edge
+            const tube = Math.max(2, slideCell * 0.085);           // tube thickness
+            const tx = pad + inset, ty = pad + inset;
+            const tw = w - inset * 2, th = h - inset * 2;
+            const tr = Math.max(2, radius - inset * 0.5);
+
+            // --- smoked glass backing panel ---
+            slideRoundPath(g, pad, pad, w, h, radius);
+            g.fillStyle = lit ? 'rgba(9,7,20,0.80)' : 'rgba(7,6,14,0.92)';
+            g.fill();
+            g.save();
+            slideRoundPath(g, pad, pad, w, h, radius);
+            g.clip();
+            // faint colour wash from the tube light bouncing off the panel
+            const wash = g.createLinearGradient(pad, pad, pad, pad + h);
+            wash.addColorStop(0, 'rgba(255,255,255,0.07)');
+            wash.addColorStop(1, 'rgba(255,255,255,0.015)');
+            g.fillStyle = wash;
+            g.fillRect(pad, pad, w, h);
+            if (lit) {
+                g.globalAlpha = 0.13;
+                g.fillStyle = color;
+                g.fillRect(pad, pad, w, h);
+                g.globalAlpha = 1;
+            }
+            g.restore();
+            // panel rim, so neighbouring blocks stay visually separate
+            slideRoundPath(g, pad + 0.5, pad + 0.5, w - 1, h - 1, radius);
+            g.strokeStyle = lit ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.05)';
+            g.lineWidth = 1;
+            g.stroke();
+
+            if (!lit) {
+                // Unlit tube: grey glass with a dull highlight and no glow.
+                slideRoundPath(g, tx, ty, tw, th, tr);
+                g.strokeStyle = 'rgba(150,152,175,0.30)';
+                g.lineWidth = tube;
+                g.stroke();
+                slideRoundPath(g, tx, ty, tw, th, tr);
+                g.strokeStyle = 'rgba(205,210,235,0.13)';
+                g.lineWidth = Math.max(1, tube * 0.3);
+                g.stroke();
+                slideSprites.set(key, cvs);
+                return cvs;
+            }
+
+            // --- outer bloom: wide, soft, low alpha ---
+            g.save();
+            g.shadowColor = color;
+            g.shadowBlur = slideCell * 0.55;
+            g.globalAlpha = 0.5;
+            g.strokeStyle = color;
+            g.lineWidth = tube * 1.5;
+            slideRoundPath(g, tx, ty, tw, th, tr);
+            g.stroke();
+            g.stroke();                        // second pass = denser halo
+            g.restore();
+
+            // --- the tube itself ---
+            g.save();
+            g.shadowColor = color;
+            g.shadowBlur = slideCell * 0.22;
+            g.strokeStyle = color;
+            g.lineWidth = tube;
+            g.lineJoin = 'round';
+            slideRoundPath(g, tx, ty, tw, th, tr);
+            g.stroke();
+            g.restore();
+
+            // --- white-hot gas core down the centre of the tube ---
+            g.strokeStyle = 'rgba(255,255,255,0.92)';
+            g.lineWidth = Math.max(1, tube * 0.34);
+            slideRoundPath(g, tx, ty, tw, th, tr);
+            g.stroke();
+
+            // The goal block gets a second, inner tube so it stays the obvious
+            // "move me" piece on every skin.
+            if (kind === 'goal') {
+                const i2 = inset + tube * 2.1;
+                if (w - i2 * 2 > tube * 2 && h - i2 * 2 > tube * 2) {
+                    g.save();
+                    g.shadowColor = color;
+                    g.shadowBlur = slideCell * 0.2;
+                    g.strokeStyle = color;
+                    g.lineWidth = tube * 0.72;
+                    slideRoundPath(g, pad + i2, pad + i2, w - i2 * 2, h - i2 * 2, Math.max(2, tr - tube));
+                    g.stroke();
+                    g.restore();
+                    g.strokeStyle = 'rgba(255,255,255,0.75)';
+                    g.lineWidth = Math.max(1, tube * 0.24);
+                    slideRoundPath(g, pad + i2, pad + i2, w - i2 * 2, h - i2 * 2, Math.max(2, tr - tube));
+                    g.stroke();
+                }
+            }
+
+            slideSprites.set(key, cvs);
+            return cvs;
+        }
+
+        function drawSlideRounded(x, y, w, h, color, alpha, kind) {
             const t = theme();
             ctx.save();
             ctx.globalAlpha = alpha == null ? 1 : alpha;
             if (t.style === 'manga') {
-                ctx.fillStyle = color;
+                // KAWAII keeps its flat ink-and-screentone look.
+                const ink = t.ink || '#241019';
+                // A wall is grey with ink hatching — dark-on-dark would read as
+                // an empty cell in this palette.
+                ctx.fillStyle = kind === 'wall' ? '#8a8796' : color;
                 ctx.fillRect(x, y, w, h);
-                ctx.strokeStyle = t.ink || '#241019';
+                if (kind === 'wall') {
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.rect(x, y, w, h);
+                    ctx.clip();
+                    ctx.strokeStyle = ink;
+                    ctx.globalAlpha = 0.45;
+                    ctx.lineWidth = Math.max(1, slideCell * 0.04);
+                    const gap = Math.max(5, slideCell * 0.22);
+                    for (let d = -h; d < w + h; d += gap) {
+                        ctx.beginPath();
+                        ctx.moveTo(x + d, y);
+                        ctx.lineTo(x + d + h, y + h);
+                        ctx.stroke();
+                    }
+                    ctx.restore();
+                }
+                ctx.strokeStyle = ink;
                 ctx.lineWidth = Math.max(1.5, slideCell * 0.07);
                 ctx.strokeRect(x + 0.8, y + 0.8, w - 1.6, h - 1.6);
+                // Goal marker: the neon skins get an inner tube for this, so
+                // manga needs its own or the goal block is just another colour.
+                if (kind === 'goal') {
+                    ctx.strokeStyle = ink;
+                    ctx.lineWidth = Math.max(2, slideCell * 0.06);
+                    ctx.beginPath();
+                    ctx.arc(x + w / 2, y + h / 2, Math.min(w, h) * 0.22, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
                 ctx.restore();
                 return;
             }
-            const r = Math.min(w, h) * 0.16;
-            ctx.beginPath();
-            ctx.moveTo(x + r, y);
-            ctx.arcTo(x + w, y, x + w, y + h, r);
-            ctx.arcTo(x + w, y + h, x, y + h, r);
-            ctx.arcTo(x, y + h, x, y, r);
-            ctx.arcTo(x, y, x + w, y, r);
-            ctx.closePath();
-            if (glow) { ctx.shadowColor = color; ctx.shadowBlur = glow; }
-            ctx.fillStyle = color;
-            ctx.fill();
-            ctx.shadowBlur = 0;
-            // top sheen, same treatment the block pieces get
-            ctx.save();
-            ctx.clip();
-            ctx.fillStyle = 'rgba(255,255,255,0.22)';
-            ctx.fillRect(x, y, w, h * 0.3);
-            ctx.restore();
+            const sprite = slideNeonSprite(w, h, color, kind || 'piece');
+            const pad = (sprite.width - w) / 2;
+            ctx.drawImage(sprite, x - pad, y - pad);
             ctx.restore();
         }
 
         function drawSlideMode() {
             const t = theme();
-            const bw = slideCell * SLIDE_COLS, bh = slideCell * SLIDE_ROWS;
+            const manga = t.style === 'manga';
+            const bw = slideCell * slideCols, bh = slideCell * slideRows;
 
-            // Board well
+            // ── Board: a dark cabinet the neon is mounted inside ──
             ctx.save();
-            ctx.fillStyle = 'rgba(10, 8, 24, 0.55)';
-            ctx.fillRect(slideBoardX, slideBoardY, bw, bh);
-            ctx.strokeStyle = t.accent;
-            ctx.lineWidth = 2.5;
-            ctx.strokeRect(slideBoardX - 1, slideBoardY - 1, bw + 2, bh + 2);
+            const well = ctx.createLinearGradient(slideBoardX, slideBoardY, slideBoardX, slideBoardY + bh);
+            well.addColorStop(0, 'rgba(8,6,20,0.78)');
+            well.addColorStop(1, 'rgba(4,3,12,0.88)');
+            ctx.fillStyle = well;
+            slideRoundPath(ctx, slideBoardX, slideBoardY, bw, bh, 10);
+            ctx.fill();
 
-            // Faint cell grid
-            ctx.strokeStyle = t.style === 'manga' ? 'rgba(36,16,25,0.14)' : 'rgba(255,255,255,0.06)';
+            // Cell grid, drawn as faint scored lines inset from the frame.
+            ctx.strokeStyle = manga ? 'rgba(36,16,25,0.14)' : 'rgba(255,255,255,0.05)';
             ctx.lineWidth = 1;
-            for (let c = 1; c < SLIDE_COLS; c++) {
+            for (let c = 1; c < slideCols; c++) {
                 ctx.beginPath();
-                ctx.moveTo(slideBoardX + c * slideCell, slideBoardY);
-                ctx.lineTo(slideBoardX + c * slideCell, slideBoardY + bh);
+                ctx.moveTo(Math.round(slideBoardX + c * slideCell) + 0.5, slideBoardY + 4);
+                ctx.lineTo(Math.round(slideBoardX + c * slideCell) + 0.5, slideBoardY + bh - 4);
                 ctx.stroke();
             }
-            for (let r = 1; r < SLIDE_ROWS; r++) {
+            for (let r = 1; r < slideRows; r++) {
                 ctx.beginPath();
-                ctx.moveTo(slideBoardX, slideBoardY + r * slideCell);
-                ctx.lineTo(slideBoardX + bw, slideBoardY + r * slideCell);
+                ctx.moveTo(slideBoardX + 4, Math.round(slideBoardY + r * slideCell) + 0.5);
+                ctx.lineTo(slideBoardX + bw - 4, Math.round(slideBoardY + r * slideCell) + 0.5);
                 ctx.stroke();
             }
 
-            // Exit target: dashed outline where the goal block has to end up.
-            const ex = slideBoardX + SLIDE_GOAL_C * slideCell;
-            const ey = slideBoardY + SLIDE_GOAL_R * slideCell;
-            ctx.setLineDash([7, 6]);
+            // Frame: a neon tube bent around the whole cabinet.
+            if (manga) {
+                ctx.strokeStyle = t.ink || '#241019';
+                ctx.lineWidth = 3;
+                slideRoundPath(ctx, slideBoardX, slideBoardY, bw, bh, 10);
+                ctx.stroke();
+            } else {
+                ctx.save();
+                ctx.shadowColor = t.accent;
+                ctx.shadowBlur = slideCell * 0.35;
+                ctx.globalAlpha = 0.55;
+                ctx.strokeStyle = t.accent;
+                ctx.lineWidth = 3.5;
+                slideRoundPath(ctx, slideBoardX, slideBoardY, bw, bh, 10);
+                ctx.stroke();
+                ctx.restore();
+                ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+                ctx.lineWidth = 1.2;
+                slideRoundPath(ctx, slideBoardX, slideBoardY, bw, bh, 10);
+                ctx.stroke();
+            }
+
+            // ── Exit: the bay the goal block has to park in ──
+            const ex = slideBoardX + slideGoalC * slideCell;
+            const ey = slideBoardY + slideGoalR * slideCell;
+            ctx.save();
+            ctx.globalAlpha = slideWon ? 1 : 0.8;
+            if (!manga) {
+                ctx.shadowColor = t.valid;
+                ctx.shadowBlur = slideCell * 0.3;
+            }
             ctx.strokeStyle = t.valid;
             ctx.lineWidth = 2;
-            ctx.globalAlpha = 0.75;
-            ctx.strokeRect(ex + 3, ey + 3, slideCell * 2 - 6, slideCell * 2 - 6);
+            ctx.setLineDash([Math.max(6, slideCell * 0.18), Math.max(5, slideCell * 0.14)]);
+            ctx.lineDashOffset = -slideWinPulse * 12;
+            slideRoundPath(ctx, ex + 4, ey + 4, slideCell * 2 - 8, slideCell * 2 - 8, 8);
+            ctx.stroke();
             ctx.setLineDash([]);
-            ctx.globalAlpha = 1;
-            ctx.fillStyle = t.valid;
-            ctx.font = Math.max(9, Math.floor(slideCell * 0.2)) + 'px Courier New';
-            ctx.textAlign = 'center';
-            ctx.fillText('EXIT', ex + slideCell, ey + slideCell * 2 - 8);
             ctx.restore();
 
-            // Pieces
+            // ── Pieces: walls first so lit blocks glow over them ──
             const pad = Math.max(2, slideCell * 0.06);
-            for (let i = 0; i < slidePieces.length; i++) {
+            const order = [];
+            for (let i = 0; i < slidePieces.length; i++) order.push(i);
+            order.sort(function (a, b) {
+                return (slideIsWall(slidePieces[a]) ? 0 : 1) - (slideIsWall(slidePieces[b]) ? 0 : 1);
+            });
+            for (const i of order) {
                 const p = slidePieces[i];
                 const s = slideSize(p.type);
                 const x = slideBoardX + p.c * slideCell + pad;
@@ -4126,32 +4388,47 @@
                 const h = s.h * slideCell - pad * 2;
                 const isGoal = p.type === 'goal';
                 const dragging = slideDrag && slideDrag.idx === i;
-                const col = slidePieceColor(p.type);
-                let glow = isGoal ? 22 : 10;
-                if (slideWon && isGoal) glow = 22 + Math.sin(slideWinPulse * 7) * 14;
-                drawSlideRounded(x, y, w, h, col, dragging ? 0.85 : 1, glow);
+                const kind = isGoal ? 'goal' : (slideIsWall(p) ? 'wall' : 'piece');
+                drawSlideRounded(x, y, w, h, slidePieceColor(p.type), dragging ? 0.88 : 1, kind);
 
-                // The goal block carries a ring so it stays unmistakable even
-                // on skins whose accent is close to the shifted hues.
-                if (isGoal) {
+                // Solved: the goal tube surges brighter, the way a sign does
+                // when the current spikes.
+                if (isGoal && slideWon && !manga) {
                     ctx.save();
-                    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-                    ctx.lineWidth = 2;
-                    const rr = Math.min(w, h) * 0.2;
-                    ctx.beginPath();
-                    ctx.arc(x + w / 2, y + h / 2, rr, 0, Math.PI * 2);
+                    ctx.globalAlpha = 0.25 + Math.abs(Math.sin(slideWinPulse * 3.2)) * 0.5;
+                    ctx.shadowColor = t.accent;
+                    ctx.shadowBlur = slideCell * 0.6;
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.lineWidth = Math.max(2, slideCell * 0.07);
+                    slideRoundPath(ctx, x + slideCell * 0.15, y + slideCell * 0.15,
+                                   w - slideCell * 0.3, h - slideCell * 0.3, Math.min(w, h) * 0.14);
                     ctx.stroke();
                     ctx.restore();
                 }
             }
+            ctx.restore();
 
-            // HUD: level / moves / par
+            // ── EXIT label, printed OUTSIDE the board ──
+            // It used to sit inside the exit bay, where whatever block was
+            // parked there covered it up.
+            ctx.save();
+            ctx.textAlign = 'center';
+            ctx.fillStyle = t.valid;
+            if (!manga) { ctx.shadowColor = t.valid; ctx.shadowBlur = 10; }
+            ctx.font = 'bold ' + Math.max(10, Math.floor(slideCell * 0.2)) + 'px Courier New';
+            ctx.fillText('▲ EXIT ▲', ex + slideCell, slideBoardY + bh + Math.max(16, slideCell * 0.3));
+            ctx.restore();
+
+            // ── HUD: level / moves / par ──
             ctx.save();
             ctx.textAlign = 'center';
             const hy = slideBoardY - (isPortrait ? 26 : 34);
             ctx.fillStyle = t.accent;
+            if (!manga) { ctx.shadowColor = t.accent; ctx.shadowBlur = 12; }
             ctx.font = 'bold ' + (isPortrait ? 13 : 15) + 'px Courier New';
-            ctx.fillText('LEVEL ' + (slideLevel + 1) + ' / ' + SLIDE_LEVEL_DATA.length, cw / 2, hy - 16);
+            ctx.fillText('LEVEL ' + (slideLevel + 1) + ' / ' + SLIDE_LEVEL_DATA.length +
+                         '   ·   ' + slideCols + '×' + slideRows, cw / 2, hy - 16);
+            ctx.shadowBlur = 0;
             const best = slideBest[slideLevel];
             ctx.fillStyle = '#cfe6ff';
             ctx.font = (isPortrait ? 12 : 14) + 'px Courier New';
@@ -4159,7 +4436,8 @@
                          (best !== undefined ? '   ·   BEST ' + best : ''), cw / 2, hy);
             ctx.restore();
 
-            if (slideWon) slideWinPulse += 0.05;
+            // Keeps the exit dashes marching and the win surge pulsing.
+            slideWinPulse += 0.05;
         }
 
         // Draw score / multiplier in top-left (score-based, no levels)
